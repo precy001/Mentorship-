@@ -1,0 +1,284 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  MEMBER
+  COUNSELLOR
+  ADMIN
+  SUPER_ADMIN
+}
+
+enum UserStatus {
+  PENDING_VERIFICATION
+  ACTIVE
+  SUSPENDED
+  DEACTIVATED
+}
+
+enum DiscussionStatus {
+  OPEN
+  ASSIGNED
+  IN_PROGRESS
+  WAITING_FOR_MEMBER
+  COMPLETED
+  CANCELLED
+  REASSIGNMENT_REQUIRED
+}
+
+enum AppointmentStatus {
+  REQUESTED
+  CONFIRMED
+  RESCHEDULED
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+}
+
+enum CounsellorAvailability {
+  AVAILABLE
+  BUSY
+  OFFLINE
+  ON_LEAVE
+  SUSPENDED
+}
+
+model User {
+  id                 String        @id @default(cuid())
+  email              String        @unique @db.VarChar(320)
+  emailVerifiedAt    DateTime?
+  displayName        String?       @db.VarChar(160)
+  role               UserRole      @default(MEMBER)
+  status             UserStatus    @default(PENDING_VERIFICATION)
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+  profile            UserProfile?
+  counsellorProfile  CounsellorProfile?
+  memberInterests    MemberInterest[]
+  createdDiscussions Discussion[]  @relation("DiscussionCreator")
+  discussionMessages DiscussionMessage[]
+  appointmentsAsMember Appointment[] @relation("AppointmentMember")
+  ratingsGiven       CounsellorRating[] @relation("RatingAuthor")
+  auditEvents        AuditLog[] @relation("AuditActor")
+
+  @@index([role, status])
+  @@index([createdAt])
+}
+
+model UserProfile {
+  id                 String   @id @default(cuid())
+  userId             String   @unique
+  categoryId         String?
+  subcategoryId      String?
+  dateOfBirth        DateTime?
+  phoneNumber        String?  @db.VarChar(32)
+  stateOfResidence   String?  @db.VarChar(100)
+  profileData        Json     @default("{}")
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category           MembershipCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  subcategory        MembershipSubcategory? @relation(fields: [subcategoryId], references: [id], onDelete: SetNull)
+
+  @@index([categoryId, subcategoryId])
+}
+
+model MembershipCategory {
+  id          String   @id @default(cuid())
+  slug        String   @unique @db.VarChar(80)
+  name        String   @db.VarChar(120)
+  description String?  @db.VarChar(500)
+  isActive    Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  subcategories MembershipSubcategory[]
+  profiles    UserProfile[]
+
+  @@index([isActive, sortOrder])
+}
+
+model MembershipSubcategory {
+  id          String   @id @default(cuid())
+  categoryId  String
+  slug        String   @db.VarChar(100)
+  name        String   @db.VarChar(140)
+  description String?  @db.VarChar(500)
+  isActive    Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  category    MembershipCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  profiles    UserProfile[]
+
+  @@unique([categoryId, slug])
+  @@index([categoryId, isActive, sortOrder])
+}
+
+model MemberInterest {
+  userId    String
+  interest  String   @db.VarChar(100)
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, interest])
+  @@index([interest])
+}
+
+model CounsellingTopic {
+  id          String   @id @default(cuid())
+  slug        String   @unique @db.VarChar(80)
+  name        String   @db.VarChar(120)
+  description String?  @db.VarChar(500)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  counsellors CounsellorTopicAssignment[]
+  discussions Discussion[]
+  appointments Appointment[]
+
+  @@index([isActive, name])
+}
+
+model CounsellorProfile {
+  id           String   @id @default(cuid())
+  userId       String   @unique
+  availability CounsellorAvailability @default(OFFLINE)
+  bio          String?  @db.VarChar(2000)
+  averageRating Decimal? @db.Decimal(3, 2)
+  ratingCount  Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  topics       CounsellorTopicAssignment[]
+  assignments  DiscussionAssignment[]
+  appointments Appointment[]
+  ratings      CounsellorRating[]
+
+  @@index([availability, ratingCount])
+}
+
+model CounsellorTopicAssignment {
+  counsellorId String
+  topicId      String
+  assignedAt   DateTime @default(now())
+  assignedById String?
+  counsellor   CounsellorProfile @relation(fields: [counsellorId], references: [id], onDelete: Cascade)
+  topic        CounsellingTopic @relation(fields: [topicId], references: [id], onDelete: Cascade)
+
+  @@id([counsellorId, topicId])
+  @@index([topicId])
+}
+
+model Discussion {
+  id          String           @id @default(cuid())
+  creatorId   String
+  topicId     String
+  title       String           @db.VarChar(180)
+  status      DiscussionStatus @default(OPEN)
+  priority    Int              @default(0)
+  completedAt DateTime?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  creator     User             @relation("DiscussionCreator", fields: [creatorId], references: [id], onDelete: Restrict)
+  topic       CounsellingTopic @relation(fields: [topicId], references: [id], onDelete: Restrict)
+  messages    DiscussionMessage[]
+  assignments DiscussionAssignment[]
+  ratings     CounsellorRating[]
+
+  @@index([topicId, status, createdAt])
+  @@index([creatorId, status, updatedAt])
+}
+
+model DiscussionAssignment {
+  id             String   @id @default(cuid())
+  discussionId   String
+  counsellorId   String
+  assignedAt     DateTime @default(now())
+  releasedAt     DateTime?
+  releaseReason  String?  @db.VarChar(300)
+  assignedByRule String   @default("AUTO") @db.VarChar(40)
+  discussion     Discussion @relation(fields: [discussionId], references: [id], onDelete: Cascade)
+  counsellor     CounsellorProfile @relation(fields: [counsellorId], references: [id], onDelete: Restrict)
+
+  @@index([counsellorId, releasedAt, assignedAt])
+  @@index([discussionId, releasedAt])
+}
+
+model DiscussionMessage {
+  id           String   @id @default(cuid())
+  discussionId String
+  authorId     String
+  body         String   @db.Text
+  createdAt    DateTime @default(now())
+  editedAt     DateTime?
+  discussion   Discussion @relation(fields: [discussionId], references: [id], onDelete: Cascade)
+  author       User     @relation(fields: [authorId], references: [id], onDelete: Restrict)
+
+  @@index([discussionId, createdAt])
+  @@index([authorId, createdAt])
+}
+
+model Appointment {
+  id           String   @id @default(cuid())
+  memberId     String
+  counsellorId String
+  topicId      String?
+  status       AppointmentStatus @default(REQUESTED)
+  startsAt     DateTime
+  endsAt       DateTime
+  meetingMode  String   @default("IN_APP") @db.VarChar(30)
+  notes        String?  @db.VarChar(2000)
+  completedAt  DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  member       User     @relation("AppointmentMember", fields: [memberId], references: [id], onDelete: Restrict)
+  counsellor   CounsellorProfile @relation(fields: [counsellorId], references: [id], onDelete: Restrict)
+  topic        CounsellingTopic? @relation(fields: [topicId], references: [id], onDelete: SetNull)
+  ratings      CounsellorRating[]
+
+  @@index([counsellorId, status, startsAt])
+  @@index([memberId, status, startsAt])
+}
+
+model CounsellorRating {
+  id             String   @id @default(cuid())
+  authorId       String
+  counsellorId   String
+  discussionId   String?
+  appointmentId  String?
+  score          Int
+  feedback       String?  @db.VarChar(2000)
+  moderationStatus String @default("PENDING") @db.VarChar(30)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  author         User     @relation("RatingAuthor", fields: [authorId], references: [id], onDelete: Restrict)
+  counsellor     CounsellorProfile @relation(fields: [counsellorId], references: [id], onDelete: Restrict)
+  discussion     Discussion? @relation(fields: [discussionId], references: [id], onDelete: SetNull)
+  appointment    Appointment? @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
+
+  @@unique([authorId, discussionId])
+  @@unique([authorId, appointmentId])
+  @@index([counsellorId, moderationStatus, createdAt])
+  @@index([authorId, createdAt])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String?
+  action     String   @db.VarChar(120)
+  entityType String   @db.VarChar(100)
+  entityId   String?  @db.VarChar(100)
+  metadata   Json     @default("{}")
+  createdAt  DateTime @default(now())
+  actor      User?    @relation("AuditActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([actorId, createdAt])
+  @@index([entityType, entityId, createdAt])
+  @@index([action, createdAt])
+}
