@@ -10,11 +10,16 @@ export default function StudentHome() {
   const app = useApp();
   const name = app.user?.name?.split(" ")[0] || "there";
   const go = (slug: string) => router.push({ pathname: "/feature/[slug]", params: { slug } });
+  const categorySlug = app.user?.categorySlug || "";
+  const isEducation = categorySlug === "education-learning";
+  const isCareer = categorySlug === "work-career";
+  const focusLabel = app.user?.subcategoryName || app.user?.categoryName || "your next step";
   const quick = [
-    { title: "AI Counsellor", slug: "ai", icon: "chatbubble-ellipses-outline" as const },
+    ...(isEducation ? [{ title: "Learning resources", slug: "resources", icon: "book-outline" as const }, { title: "Scholarships", slug: "scholarships", icon: "school-outline" as const }] : []),
+    ...(isCareer ? [{ title: "Career growth", slug: "career", icon: "trending-up-outline" as const }, { title: "Business guidance", slug: "business", icon: "briefcase-outline" as const }] : []),
+    ...(!isEducation && !isCareer ? [{ title: "Explore opportunities", slug: "explore", icon: "compass-outline" as const }] : []),
+    { title: "Speak to a counsellor", slug: "counselling", icon: "chatbubble-ellipses-outline" as const },
     { title: "Book appointment", slug: "booking", icon: "calendar-outline" as const },
-    { title: "Career assessment", slug: "assessment", icon: "compass-outline" as const },
-    { title: "Notifications", slug: "notifications", icon: "notifications-outline" as const },
   ];
 
   return (
@@ -23,7 +28,7 @@ export default function StudentHome() {
         <View style={{ gap: 5, flex: 1 }}>
           <Text style={{ color: colors.muted, fontSize: 11, fontWeight: "800", letterSpacing: 1.1 }}>YOUR SPACE TO GROW</Text>
           <Text style={{ color: colors.ink, fontSize: 27, fontWeight: "800", letterSpacing: -0.7 }}>Hello, {name}.</Text>
-          <Text style={{ color: colors.muted, fontSize: 13 }}>What would you like to focus on today?</Text>
+          <Text style={{ color: colors.muted, fontSize: 13 }}>{`A space shaped around ${focusLabel}.`}</Text>
         </View>
         <Pressable accessibilityRole="button" accessibilityLabel="Notifications" onPress={() => go("notifications")} style={({ pressed }) => ({ width: 46, height: 46, backgroundColor: colors.surface, borderRadius: 16, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: colors.line, opacity: pressed ? 0.8 : 1 })}>
           <Ionicons name="notifications-outline" size={21} color={colors.ink} />
@@ -72,8 +77,8 @@ export default function StudentHome() {
         ))}
       </Card>
 
-      <Heading title="Picked for you" small subtitle="A few places to keep learning." />
-      {app.resources.slice(0, 2).map(r => (
+      <Heading title={isEducation ? "Learning opportunities" : isCareer ? "Career and business growth" : "Recommended for you"} small subtitle={`Selected for ${focusLabel.toLowerCase()}.`} />
+      {(isEducation || !isCareer ? app.resources.slice(0, 2) : []).map(r => (
         <Pressable key={r.id} onPress={() => go("resources")}>
           <Card>
             <Pill label={r.category} />

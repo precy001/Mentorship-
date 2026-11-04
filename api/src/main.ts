@@ -1,4 +1,3 @@
-import { CorsOptions } from 'cors';
 import 'reflect-metadata';
 import { ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -19,10 +18,7 @@ async function bootstrap(): Promise<void> {
   app.setGlobalPrefix(prefix);
   app.use(helmet());
   app.enableCors({
-    origin: (
-  origin: string | undefined,
-  callback: (err: Error | null, allow?: boolean) => void,
-) =>  {
+    origin: (origin: string | undefined, callback: (error: Error | null, allow?: boolean) => void) => {
       // Native mobile clients normally omit Origin. Browser origins must be explicitly allowed.
       if (!origin || origins.includes(origin)) return callback(null, true);
       return callback(new Error('Origin is not allowed by CORS'), false);

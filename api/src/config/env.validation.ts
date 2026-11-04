@@ -1,5 +1,5 @@
 import { plainToInstance } from 'class-transformer';
-import { IsIn, IsInt, IsOptional, IsString, Max, Min, validateSync } from 'class-validator';
+import { IsIn, IsInt, IsOptional, IsString, Max, Min, MinLength, validateSync } from 'class-validator';
 
 class EnvironmentVariables {
   @IsIn(['development', 'test', 'production'])
@@ -8,6 +8,42 @@ class EnvironmentVariables {
   @IsOptional()
   @IsString()
   DATABASE_URL?: string;
+
+  @IsString()
+  @MinLength(32)
+  JWT_ACCESS_SECRET!: string;
+
+  @IsOptional()
+  @IsString()
+  AUTH_VERIFICATION_URL?: string;
+
+  @IsOptional()
+  @IsString()
+  AUTH_PASSWORD_RESET_URL?: string;
+
+  @IsOptional()
+  @IsString()
+  AUTH_ACTION_BASE_URL?: string;
+
+  @IsOptional()
+  @IsString()
+  SMTP_HOST?: string;
+
+  @IsOptional()
+  @IsString()
+  SMTP_PORT?: string;
+
+  @IsOptional()
+  @IsString()
+  SMTP_USER?: string;
+
+  @IsOptional()
+  @IsString()
+  SMTP_PASSWORD?: string;
+
+  @IsOptional()
+  @IsString()
+  EMAIL_FROM?: string;
 
   @IsOptional()
   @IsString()
@@ -36,6 +72,9 @@ export function validateEnvironment(config: Record<string, unknown>): Record<str
   }
   if (transformed.NODE_ENV !== 'test' && !transformed.DATABASE_URL) {
     throw new Error('DATABASE_URL is required outside the test environment');
+  }
+  if (transformed.NODE_ENV === 'production' && (!config.SMTP_HOST || !config.SMTP_USER || !config.SMTP_PASSWORD || !config.EMAIL_FROM)) {
+    throw new Error('SMTP_HOST, SMTP_USER, SMTP_PASSWORD, and EMAIL_FROM are required in production');
   }
   return { ...config, PORT: transformed.PORT };
 }

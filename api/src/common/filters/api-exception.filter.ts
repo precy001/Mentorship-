@@ -1,40 +1,25 @@
-import {
-  ArgumentsHost,
-  Catch,
-  ExceptionFilter,
-  HttpException,
-  HttpStatus,
-  Logger,
-} from '@nestjs/common';
+import { ArgumentsHost, Catch, ExceptionFilter, HttpException, HttpStatus, Logger } from '@nestjs/common';
 import type { Request, Response } from 'express';
 
 @Catch()
 export class ApiExceptionFilter implements ExceptionFilter {
   private readonly logger = new Logger(ApiExceptionFilter.name);
-
   catch(exception: unknown, host: ArgumentsHost): void {
     const ctx = host.switchToHttp();
     const response = ctx.getResponse<Response>();
     const request = ctx.getRequest<Request>();
-    const isHttpException = exception instanceof HttpException;
-    const status = isHttpException ? exception.getStatus() : HttpStatus.INTERNAL_SERVER_ERROR;
-
-    if (!isHttpException || status >= 500) {
-      // Avoid logging exception payloads or query strings that may contain private data.
-      this.logger.error(`${request.method} ${request.path} failed (${status})`);
+    const isHttp = exception instanceof HttpException;
+    const status = isHttp ? exception.getStatus() : HttpStatus.INTERNAL_SERVER_ERROR;
+    if (!isHttp || status >= 500) {
+      const detail = exception instanceof Error ? `${exception.name}: ${exception.message}\n${exception.stack ?? ''}` : String(exception);
+      this.logger.error(`${request.method} ${request.path} failed (${status})`, detail);
     }
-
-    const publicMessage = status >= 500
-      ? 'An unexpected error occurred.'
-      : isHttpException
-        ? exception.getResponse()
-        : 'An unexpected error occurred.';
-
-    response.status(status).json({
-      statusCode: status,
-      error: publicMessage,
-      timestamp: new Date().toISOString(),
-      path: request.path,
-    });
+    let message = 'Something went wrong. Please try again.';
+    if (isHttp && status < 500) {
+      const payload = exception.getResponse();
+      const raw = typeof payload === 'string' ? payload : (payload as { message?: unknown }).message;
+      message = Array.isArray(raw) ? raw.map(String).join(' ') : typeof raw === 'string' ? raw : message;
+    }
+    response.status(status).json({ statusCode: status, message, error: message, timestamp: new Date().toISOString(), path: request.path });
   }
 }
