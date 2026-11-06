@@ -17,6 +17,7 @@ type User = {
   subcategoryId?: string;
   subcategoryName?: string;
   subcategorySlug?: string;
+  avatarUrl?: string | null;
 };
 type Message = { id: string; sender: "You" | "Counsellor" | "AI"; text: string; time: string };
 type Booking = { id: string; counsellor: string; date: string; time: string; topic: string; status: string };
@@ -74,7 +75,7 @@ type ContextValue = AppState & {
   addTopic: (topic: string) => void;
   addResource: (title: string, description: string) => void;
   addScholarship: (title: string, deadline: string) => void;
-  resetDemo: () => Promise<void>;
+  updateAvatar: (avatarUrl: string) => void;
 };
 
 const Ctx = createContext<ContextValue | null>(null);
@@ -98,6 +99,7 @@ function toAppUser(user: Awaited<ReturnType<typeof apiMe>>): User {
     subcategoryId: user.profile?.subcategory?.id,
     subcategoryName: user.profile?.subcategory?.name,
     subcategorySlug: user.profile?.subcategory?.slug,
+    avatarUrl: user.profile?.avatarUrl ?? null,
   };
 }
 
@@ -175,11 +177,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     addTopic: topic => patch(current => ({ ...current, topics: current.topics.includes(topic) ? current.topics : [...current.topics, topic] })),
     addResource: (title, description) => patch(current => ({ ...current, resources: [{ id: String(Date.now()), title, category: "Added by admin", readTime: "New", description }, ...current.resources] })),
     addScholarship: (title, deadline) => patch(current => ({ ...current, scholarships: [{ id: String(Date.now()), title, provider: "", level: "All levels", deadline, eligibility: "", description: "" }, ...current.scholarships] })),
-    resetDemo: async () => {
-      await apiLogout();
-      await AsyncStorage.removeItem(STORAGE_KEY);
-      setState(initial);
-    },
+    updateAvatar: avatarUrl => patch(current => ({ ...current, user: current.user ? { ...current.user, avatarUrl } : null })),
+
   }), [state, loaded]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

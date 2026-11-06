@@ -24,8 +24,8 @@ export default function Explore() {
         <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}><Pill label={item.category || item.level || "University"} /><Pressable onPress={() => tab === "resources" ? app.toggleResource(item.id) : tab === "scholarships" ? app.toggleScholarship(item.id) : go("universities")}><Text style={{ color: colors.primary, fontWeight: "800" }}>{tab !== "universities" ? (saved ? "♥ Saved" : "♡ Save") : "Details →"}</Text></Pressable></View>
         <Text style={{ color: colors.ink, fontSize: 17, fontWeight: "800" }}>{item.title}</Text>
         <Text style={{ color: colors.muted, lineHeight: 20 }}>{item.description}</Text>
-        {item.deadline && <Text style={{ color: colors.primary, fontWeight: "700", fontSize: 12 }}>Sample deadline: {item.deadline}</Text>}
-        {tab === "scholarships" && <Text style={{ color: colors.muted, fontSize: 11 }}>Demo listing — not a verified opportunity.</Text>}
+        {item.deadline && <Text style={{ color: colors.primary, fontWeight: "700", fontSize: 12 }}>Deadline: {item.deadline}</Text>}
+        {tab === "scholarships" && <Text style={{ color: colors.muted, fontSize: 11 }}>Check eligibility and deadlines directly with the scholarship provider before applying.</Text>}
       </Card>;
     })}
     {filtered.length === 0 && <Card><Text style={{ color: colors.ink, fontWeight: "800" }}>Nothing found</Text><Text style={{ color: colors.muted }}>Try a different search term.</Text></Card>}

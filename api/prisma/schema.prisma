@@ -84,6 +84,7 @@ model UserProfile {
   subcategoryId      String?
   dateOfBirth        DateTime?
   phoneNumber        String?  @db.VarChar(32)
+  avatarUrl          String?  @db.VarChar(2048)
   stateOfResidence   String?  @db.VarChar(100)
   profileData        Json     @default("{}")
   createdAt          DateTime @default(now())

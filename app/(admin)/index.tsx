@@ -9,8 +9,8 @@ export default function AdminDashboard() {
   const lgas = ["Lagos Mainland", "Ikeja", "Surulere", "Kano Municipal", "Eti-Osa", "Ibadan North"];
   return <Screen>
     <Text onPress={() => Alert.alert("Sign out?", "Return to role selection?", [{ text: "Stay", style: "cancel" }, { text: "Sign out", onPress: async () => { await app.logout(); router.replace("/"); } }])} style={{ color: colors.primary, fontWeight: "800" }}>← Sign out</Text>
-    <Heading title="Admin dashboard" subtitle={`Platform operations · ${app.user?.name || "Demo admin"}`} />
-    <Card style={{ backgroundColor: colors.primary, borderColor: colors.primary }}><Text style={{ color: "#B8F2E8", fontWeight: "800" }}>GUIDANCE+ ADMIN</Text><Text style={{ color: "#fff", fontWeight: "900", fontSize: 22 }}>A clearer view of support.</Text><Text style={{ color: "#E1EDF5" }}>Manage demo access, topics and educational content. Changes persist locally on this device.</Text></Card>
+    <Heading title="Admin dashboard" subtitle={`Platform operations · ${app.user?.name || "Administrator"}`} />
+    <Card style={{ backgroundColor: colors.primary, borderColor: colors.primary }}><Text style={{ color: "#B8F2E8", fontWeight: "800" }}>MENTORSHIP+ ADMIN</Text><Text style={{ color: "#fff", fontWeight: "900", fontSize: 22 }}>A clearer view of support.</Text><Text style={{ color: "#E1EDF5" }}>Manage demo access, topics and educational content. Changes persist locally on this device.</Text></Card>
     <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>{[
       ["Authorised LGAs", app.authorisedLgas.length], ["Counsellors", app.counsellors.length], ["Topics", app.topics.length], ["Resources", app.resources.length], ["Scholarships", app.scholarships.length], ["Appointments", app.bookings.length]
     ].map(([label, value]) => <Card key={String(label)} style={{ width: "47%", flexGrow: 1 }}><Text style={{ color: colors.muted, fontSize: 12 }}>{label}</Text><Text style={{ color: colors.ink, fontSize: 25, fontWeight: "900" }}>{value}</Text></Card>)}</View>
@@ -25,6 +25,6 @@ export default function AdminDashboard() {
     <Heading title="Counsellor roster" small />
     {app.counsellors.map(c => <Card key={c.id}><Row style={{ justifyContent: "space-between" }}><Text style={{ color: colors.ink, fontWeight: "800" }}>{c.name}</Text><Pill label="Active" tone="green" /></Row><Text style={{ color: colors.muted }}>Assigned topics: {c.topics.join(", ")}</Text></Card>)}
     <Button title="Open student experience" variant="secondary" onPress={() => router.push("/(student)")} />
-    <Text style={{ color: colors.muted, fontSize: 11, lineHeight: 17 }}>Privacy note: this demo does not expose private journal entries in admin analytics. Server-side authorisation is required before production use.</Text>
+    <Text style={{ color: colors.muted, fontSize: 11, lineHeight: 17 }}>Privacy note: private journal entries are excluded from admin analytics. Access to sensitive records must remain server-authorised.</Text>
   </Screen>;
 }

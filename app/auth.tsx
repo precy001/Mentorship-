@@ -55,6 +55,7 @@ export default function AuthScreen() {
         email: user.email,
         name: user.displayName || normalizedEmail.split("@")[0],
         role: appRole,
+        avatarUrl: user.profile?.avatarUrl ?? null,
         categoryId: user.profile?.category?.id,
         categoryName: user.profile?.category?.name,
         categorySlug: user.profile?.category?.slug,

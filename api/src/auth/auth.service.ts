@@ -66,7 +66,7 @@ export class AuthService {
     return { message: 'Account created. Check your email for a verification link before signing in.' };
   }
 
-  async login(dto: LoginDto): Promise<{ accessToken: string; tokenType: 'Bearer'; expiresIn: number; user: AuthenticatedUser & { displayName: string | null; profile: { category: { id: string; name: string; slug: string } | null; subcategory: { id: string; name: string; slug: string } | null } | null } }> {
+  async login(dto: LoginDto): Promise<{ accessToken: string; tokenType: 'Bearer'; expiresIn: number; user: AuthenticatedUser & { displayName: string | null; profile: { avatarUrl: string | null; category: { id: string; name: string; slug: string } | null; subcategory: { id: string; name: string; slug: string } | null } | null } }> {
     const email = dto.email.trim().toLowerCase();
     const user = await this.prisma.user.findUnique({
       where: { email },
@@ -89,6 +89,7 @@ export class AuthService {
       user: {
         id: user.id, email: user.email, role: user.role, status: user.status, displayName: user.displayName,
         profile: user.profile ? {
+          avatarUrl: user.profile.avatarUrl,
           category: user.profile.category ? { id: user.profile.category.id, name: user.profile.category.name, slug: user.profile.category.slug } : null,
           subcategory: user.profile.subcategory ? { id: user.profile.subcategory.id, name: user.profile.subcategory.name, slug: user.profile.subcategory.slug } : null,
         } : null,
@@ -162,6 +163,7 @@ export class AuthService {
       select: {
         id: true, email: true, role: true, status: true, displayName: true, emailVerifiedAt: true,
         profile: { select: {
+          avatarUrl: true,
           category: { select: { id: true, name: true, slug: true } },
           subcategory: { select: { id: true, name: true, slug: true } },
         } },

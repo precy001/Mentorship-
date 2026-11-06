@@ -7,16 +7,34 @@
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
     "plugins": [
-      "expo-router"
+      "expo-router",
+      "expo-image-picker"
     ],
     "experiments": {
       "typedRoutes": true
     },
     "android": {
-      "package": "com.guidanceplus.app"
+      "package": "com.guidanceplus.app",
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "ios": {
       "bundleIdentifier": "com.guidanceplus.app"
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "b3f0aa89-9026-40c6-b29c-d4a797b58a3f"
+      }
+    },
+    "owner": "ultimatedev",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/b3f0aa89-9026-40c6-b29c-d4a797b58a3f"
     }
   }
 }
