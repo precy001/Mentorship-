@@ -8,12 +8,20 @@
       "channel": "preview",
       "android": {
         "buildType": "apk"
+      },
+      "environment": "preview",
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://mentorship-x1fa.onrender.com/api/v1"
       }
     },
     "production": {
       "channel": "production",
       "android": {
         "buildType": "app-bundle"
+      },
+      "environment": "production",
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://mentorship-x1fa.onrender.com/api/v1"
       }
     }
   }

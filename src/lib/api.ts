@@ -11,16 +11,42 @@ function resolveBaseUrl(): string {
   const configured = process.env.EXPO_PUBLIC_API_URL?.trim();
 
   if (configured) {
-    return configured.replace(/\/$/, "");
+    return configured.replace(/\/+$/, "");
+  }
+
+  // A development client may use the machine running Expo. A standalone
+  // build must never silently target localhost (which would be the phone).
+  if (!__DEV__) {
+    return "";
   }
 
   const hostUri = Constants.expoConfig?.hostUri;
   const host = hostUri?.split(":")[0];
 
-  return `http://${host || "localhost"}:4000/api/v1`;
+  return host ? `http://${host}:4000/api/v1` : "http://localhost:4000/api/v1";
 }
 
 export const API_BASE_URL = resolveBaseUrl();
+
+function requireApiBaseUrl(): string {
+  if (!API_BASE_URL) {
+    throw new Error(
+      "The Mentorship+ server address is not configured for this build. Configure EXPO_PUBLIC_API_URL in the EAS environment and rebuild the app.",
+    );
+  }
+
+  if (!__DEV__) {
+    if (!/^https:\/\//i.test(API_BASE_URL)) {
+      throw new Error("The production Mentorship+ API address must use HTTPS.");
+    }
+
+    if (/^https?:\/\/(localhost|127(?:\.\d{1,3}){3}|0\.0\.0\.0)(:\d+)?(?:\/|$)/i.test(API_BASE_URL)) {
+      throw new Error("This production build is pointing to localhost. Configure the live Render API URL and rebuild.");
+    }
+  }
+
+  return API_BASE_URL;
+}
 
 export class ApiError extends Error {
   constructor(
@@ -120,6 +146,7 @@ export async function apiRequest<T>(
   init: RequestInit = {},
   authenticated = false,
 ): Promise<T> {
+  const baseUrl = requireApiBaseUrl();
   const token = authenticated
     ? await AsyncStorage.getItem(TOKEN_KEY)
     : null;
@@ -133,8 +160,9 @@ export async function apiRequest<T>(
   let response: Response;
 
   try {
-    response = await fetch(
-      `${API_BASE_URL}${path.startsWith("/") ? path : `/${path}`}`,
+    const requestUrl = `${baseUrl}${path.startsWith("/") ? path : `/${path}`}`;
+    response = await expoFetch(
+      requestUrl,
       {
         ...init,
         signal: controller.signal,
@@ -152,8 +180,19 @@ export async function apiRequest<T>(
       );
     }
 
+    const detail =
+      error instanceof Error
+        ? `${error.name}: ${error.message}`
+        : String(error);
+
+    console.error("[API Request] Network request failed", {
+      url: `${baseUrl}${path.startsWith("/") ? path : `/${path}`}`,
+      method: init.method ?? "GET",
+      error: detail,
+    });
+
     throw new Error(
-      `Could not connect to the Mentorship+ server at ${API_BASE_URL}. Check that the API is running and your phone and computer are on the same network.`,
+      `Could not connect to the Mentorship+ server at ${baseUrl}. ${detail}. Check your internet connection and try again.`,
     );
   } finally {
     clearTimeout(timeout);
@@ -302,6 +341,7 @@ export async function apiUploadProfilePicture(
     throw new Error("No profile picture was selected.");
   }
 
+  const baseUrl = requireApiBaseUrl();
   const controller = new AbortController();
 
   const timeout = setTimeout(
@@ -309,7 +349,7 @@ export async function apiUploadProfilePicture(
     30_000,
   );
 
-  const uploadUrl = `${API_BASE_URL}/profile/avatar`;
+  const uploadUrl = `${baseUrl}/profile/avatar`;
 
   try {
     // Expo SDK 57 requires an actual File/Blob in FormData.

@@ -1,0 +1,17 @@
+Mentorship+ configuration fixes
+
+Copy the four files in this archive into the ROOT of your existing Mentorship+ project, keeping their folder paths and replacing the existing files.
+
+What changed:
+1. src/lib/api.ts: development builds may use the Expo host, but standalone/production builds no longer fall back to localhost. Production requests require a configured HTTPS API URL and reject localhost.
+2. eas.json: preview and production profiles explicitly select their matching EAS environments.
+3. api/.env.example: fixed the malformed literal \n text and corrected the Supabase bucket name to profile-photos.
+4. app.json: removed the duplicate Android RECORD_AUDIO permission.
+
+RENDER API CONFIGURATION:
+The preview and production build profiles now explicitly set EXPO_PUBLIC_API_URL to:
+https://mentorship-x1fa.onrender.com/api/v1
+
+This is a public API base URL, not a secret. Do not put database passwords, Supabase service-role keys, or JWT secrets in EXPO_PUBLIC_API_URL. The app must be rebuilt after applying these files; an already-installed APK will continue using the URL compiled into that APK.
+
+The source patch for the three code/config changes (excluding the corrected .env.example replacement) is also included as mentorship_mobile_api_fix.patch.
