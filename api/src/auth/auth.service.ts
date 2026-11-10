@@ -21,6 +21,20 @@ const BCRYPT_ROUNDS = 12;
 const EMAIL_TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
 const RESET_TOKEN_TTL_MS = 30 * 60 * 1000;
 
+type StoredProfileData = { lga?: unknown; lcda?: unknown; school?: unknown };
+
+function getStoredProfileData(value: unknown): { lga: string | null; lcda: string | null; school: string | null } {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return { lga: null, lcda: null, school: null };
+  }
+  const data = value as StoredProfileData;
+  return {
+    lga: typeof data.lga === 'string' ? data.lga : null,
+    lcda: typeof data.lcda === 'string' ? data.lcda : null,
+    school: typeof data.school === 'string' ? data.school : null,
+  };
+}
+
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
@@ -66,7 +80,7 @@ export class AuthService {
     return { message: 'Account created. Check your email for a verification link before signing in.' };
   }
 
-  async login(dto: LoginDto): Promise<{ accessToken: string; tokenType: 'Bearer'; expiresIn: number; user: AuthenticatedUser & { displayName: string | null; profile: { avatarUrl: string | null; category: { id: string; name: string; slug: string } | null; subcategory: { id: string; name: string; slug: string } | null } | null } }> {
+  async login(dto: LoginDto): Promise<{ accessToken: string; tokenType: 'Bearer'; expiresIn: number; user: AuthenticatedUser & { displayName: string | null; profile: { avatarUrl: string | null; phoneNumber: string | null; dateOfBirth: Date | null; stateOfResidence: string | null; lga: string | null; lcda: string | null; school: string | null; category: { id: string; name: string; slug: string } | null; subcategory: { id: string; name: string; slug: string } | null } | null } }> {
     const email = dto.email.trim().toLowerCase();
     const user = await this.prisma.user.findUnique({
       where: { email },
@@ -90,6 +104,10 @@ export class AuthService {
         id: user.id, email: user.email, role: user.role, status: user.status, displayName: user.displayName,
         profile: user.profile ? {
           avatarUrl: user.profile.avatarUrl,
+          phoneNumber: user.profile.phoneNumber,
+          dateOfBirth: user.profile.dateOfBirth,
+          stateOfResidence: user.profile.stateOfResidence,
+          ...getStoredProfileData(user.profile.profileData),
           category: user.profile.category ? { id: user.profile.category.id, name: user.profile.category.name, slug: user.profile.category.slug } : null,
           subcategory: user.profile.subcategory ? { id: user.profile.subcategory.id, name: user.profile.subcategory.name, slug: user.profile.subcategory.slug } : null,
         } : null,
@@ -164,13 +182,25 @@ export class AuthService {
         id: true, email: true, role: true, status: true, displayName: true, emailVerifiedAt: true,
         profile: { select: {
           avatarUrl: true,
+          phoneNumber: true,
+          dateOfBirth: true,
+          stateOfResidence: true,
+          profileData: true,
           category: { select: { id: true, name: true, slug: true } },
           subcategory: { select: { id: true, name: true, slug: true } },
         } },
       },
     });
     if (!user) throw new UnauthorizedException('Your account could not be found. Please sign in again.');
-    return user;
+    if (!user.profile) return user;
+    const { profileData, ...profile } = user.profile;
+    return {
+      ...user,
+      profile: {
+        ...profile,
+        ...getStoredProfileData(profileData),
+      },
+    };
   }
 
   private async createAndSendToken(userId: string, email: string, type: AuthTokenType, ttlMs: number): Promise<void> {

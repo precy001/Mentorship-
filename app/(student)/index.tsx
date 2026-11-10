@@ -13,10 +13,18 @@ export default function StudentHome() {
   const categorySlug = app.user?.categorySlug || "";
   const isEducation = categorySlug === "education-learning";
   const isCareer = categorySlug === "work-career";
+  const subcategorySlug = app.user?.subcategorySlug || "";
+  const isScholarshipRelevant = ["secondary-school-student", "undergraduate", "postgraduate-student", "recent-graduate"].includes(subcategorySlug);
+  const isBusinessFocused = ["self-employed-business-owner", "artisan-skilled-tradesperson", "freelancer-gig-worker"].includes(subcategorySlug);
+  const isJobSeeking = ["job-seeker", "recent-graduate"].includes(subcategorySlug);
+  const isCareerTransition = ["career-changer", "employed-professional"].includes(subcategorySlug);
   const focusLabel = app.user?.subcategoryName || app.user?.categoryName || "your next step";
   const quick = [
-    ...(isEducation ? [{ title: "Learning resources", slug: "resources", icon: "book-outline" as const }, { title: "Scholarships", slug: "scholarships", icon: "school-outline" as const }] : []),
-    ...(isCareer ? [{ title: "Career growth", slug: "career", icon: "trending-up-outline" as const }, { title: "Business guidance", slug: "business", icon: "briefcase-outline" as const }] : []),
+    ...(isEducation ? [{ title: "Learning resources", slug: "resources", icon: "book-outline" as const }] : []),
+    ...(isEducation && isScholarshipRelevant ? [{ title: "Scholarships", slug: "scholarships", icon: "school-outline" as const }] : []),
+    ...(isCareer && isBusinessFocused ? [{ title: "Business guidance", slug: "business", icon: "briefcase-outline" as const }, { title: "Build your skills", slug: "career", icon: "trending-up-outline" as const }] : []),
+    ...(isJobSeeking ? [{ title: "Employment opportunities", slug: "career", icon: "briefcase-outline" as const }, { title: "Career resources", slug: "resources", icon: "book-outline" as const }] : []),
+    ...(isCareer && isCareerTransition ? [{ title: "Career growth", slug: "career", icon: "trending-up-outline" as const }, { title: "Learning resources", slug: "resources", icon: "book-outline" as const }] : []),
     ...(!isEducation && !isCareer ? [{ title: "Explore opportunities", slug: "explore", icon: "compass-outline" as const }] : []),
     { title: "Speak to a counsellor", slug: "counselling", icon: "chatbubble-ellipses-outline" as const },
     { title: "Book appointment", slug: "booking", icon: "calendar-outline" as const },
@@ -77,8 +85,8 @@ export default function StudentHome() {
         ))}
       </Card>
 
-      <Heading title={isEducation ? "Learning opportunities" : isCareer ? "Career and business growth" : "Recommended for you"} small subtitle={`Selected for ${focusLabel.toLowerCase()}.`} />
-      {(isEducation || !isCareer ? app.resources.slice(0, 2) : []).map(r => (
+      <Heading title={isEducation ? (isScholarshipRelevant ? "Learning and funding opportunities" : "Learning opportunities") : isCareer ? (isBusinessFocused ? "Business and skills growth" : isJobSeeking ? "Employment and career opportunities" : "Career development") : "Recommended for you"} small subtitle={`Selected for ${focusLabel.toLowerCase()}.`} />
+      {(isEducation || isJobSeeking || isCareerTransition || isBusinessFocused ? app.resources.slice(0, 2) : []).map(r => (
         <Pressable key={r.id} onPress={() => go("resources")}>
           <Card>
             <Pill label={r.category} />

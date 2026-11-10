@@ -11,6 +11,10 @@ type User = {
   nin?: string;
   lga?: string;
   state?: string;
+  lcda?: string;
+  phoneNumber?: string;
+  dateOfBirth?: string;
+  school?: string;
   categoryId?: string;
   categoryName?: string;
   categorySlug?: string;
@@ -100,6 +104,12 @@ function toAppUser(user: Awaited<ReturnType<typeof apiMe>>): User {
     subcategoryName: user.profile?.subcategory?.name,
     subcategorySlug: user.profile?.subcategory?.slug,
     avatarUrl: user.profile?.avatarUrl ?? null,
+    phoneNumber: user.profile?.phoneNumber ?? undefined,
+    dateOfBirth: user.profile?.dateOfBirth ?? undefined,
+    state: user.profile?.stateOfResidence ?? undefined,
+    lga: user.profile?.lga ?? undefined,
+    lcda: user.profile?.lcda ?? undefined,
+    school: user.profile?.school ?? undefined,
   };
 }
 

@@ -70,7 +70,15 @@ export default function Profile() {
         <Text style={{ color: colors.muted, fontSize: 12 }}>IDENTITY INFORMATION</Text>
         <Text style={{ color: colors.ink, fontWeight: "700" }}>NIN · {masked}</Text>
         <Text style={{ color: colors.ink }}>LGA · {app.user?.lga || "Not provided"}</Text>
-        <Text style={{ color: colors.ink }}>State · {app.user?.state || "—"}</Text>
+        <Text style={{ color: colors.ink }}>LCDA · {app.user?.lcda || "Not provided"}</Text>
+        <Text style={{ color: colors.ink }}>State · {app.user?.state || "Not provided"}</Text>
+        {app.user?.phoneNumber ? <Text style={{ color: colors.ink }}>WhatsApp · {app.user.phoneNumber}</Text> : null}
+        {app.user?.dateOfBirth ? <Text style={{ color: colors.ink }}>Date of birth · {new Date(app.user.dateOfBirth).toLocaleDateString()}</Text> : null}
+        <View style={{ height: 1, backgroundColor: colors.line }} />
+        <Text style={{ color: colors.muted, fontSize: 12 }}>MEMBERSHIP</Text>
+        <Text style={{ color: colors.ink, fontWeight: "700" }}>{app.user?.categoryName || "Membership category not set"}</Text>
+        <Text style={{ color: colors.ink }}>{app.user?.subcategoryName || "Membership subcategory not set"}</Text>
+        {app.user?.school ? <Text style={{ color: colors.ink }}>School · {app.user.school}</Text> : null}
       </Card>
 
       <Button title="Verify NIN" onPress={verifyNin} variant="secondary" />

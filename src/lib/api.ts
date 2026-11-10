@@ -67,6 +67,12 @@ export type ApiUser = {
   emailVerifiedAt?: string | null;
   profile?: {
     avatarUrl?: string | null;
+    phoneNumber?: string | null;
+    dateOfBirth?: string | null;
+    stateOfResidence?: string | null;
+    lga?: string | null;
+    lcda?: string | null;
+    school?: string | null;
     category?: {
       id: string;
       name: string;
