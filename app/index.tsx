@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from "react";
-import { Animated, Image, Text, View } from "react-native";
+import { Animated, Image, ScrollView, Text, View } from "react-native";
 import { router } from "expo-router";
 import { Screen, Button } from "@/src/components/UI";
 import { colors } from "@/src/lib/theme";
@@ -17,8 +17,14 @@ export default function Welcome() {
   }, [opacity, scale, rise]);
 
   return (
-    <Screen style={{ flex: 1, justifyContent: "space-between", paddingTop: 22, paddingBottom: 22 }}>
-      <View style={{ flexDirection: "row", alignItems: "center", gap: 11 }}>
+    <Screen scroll={false} style={{ flex: 1, paddingTop: 22, paddingBottom: 22, gap: 0 }}>
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={{ flexGrow: 1, justifyContent: "space-between", gap: 20 }}
+        showsVerticalScrollIndicator={false}
+        bounces={false}
+      >
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 11 }}>
         <Image source={require("../assets/guidance-logo.png")} style={{ width: 46, height: 46, borderRadius: 13 }} resizeMode="cover" />
         <View>
           <Text style={{ color: colors.ink, fontSize: 18, fontWeight: "800", letterSpacing: -0.5 }}>Mentorship+</Text>
@@ -34,8 +40,9 @@ export default function Welcome() {
         <Text style={{ color: colors.muted, fontSize: 15, lineHeight: 23, textAlign: "center", marginTop: 15, maxWidth: 310 }}>A thoughtful space for learning, career discovery, wellbeing, and support.</Text>
         <View style={{ flexDirection: "row", gap: 6, marginTop: 25 }}><View style={{ width: 24, height: 5, borderRadius: 5, backgroundColor: colors.primary }} /><View style={{ width: 6, height: 5, borderRadius: 5, backgroundColor: "#C9D7D7" }} /><View style={{ width: 6, height: 5, borderRadius: 5, backgroundColor: "#C9D7D7" }} /></View>
       </Animated.View>
+      </ScrollView>
 
-      <View style={{ gap: 12 }}>
+      <View style={{ gap: 12, paddingTop: 16 }}>
         <Button title="Get started" onPress={() => router.push("/auth?mode=signup")} />
         <Button title="I already have an account" variant="secondary" onPress={() => router.push("/auth?mode=signin")} />
         <Text style={{ color: colors.mutedLight, fontSize: 11, textAlign: "center", marginTop: 3 }}>A little guidance. A clearer tomorrow.</Text>
