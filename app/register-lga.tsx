@@ -5,6 +5,7 @@ import { Screen, Button, Card } from "@/src/components/UI";
 import { colors } from "@/src/lib/theme";
 
 const locations = [
+  { state: "Lagos", lga: "Ikorodu", lcs: ["Ikorodu West LCDA", "Ikorodu North LCDA", "Igbogbo-Baiyeku LCDA", "Imota LCDA", "Ijede LCDA"] },
   { state: "Lagos", lga: "Ikeja", lcs: ["Ikeja LCDA", "Ojodu LCDA", "Onigbongbo LCDA"] },
   { state: "Lagos", lga: "Alimosho", lcs: ["Agbado/Oke-Odo LCDA", "Ayobo-Ipaja LCDA", "Egbe-Idimu LCDA", "Ikotun-Igando LCDA", "Mosan-Okunola LCDA"] },
   { state: "Lagos", lga: "Eti-Osa", lcs: ["Ikoyi-Obalende LCDA", "Lekki LCDA", "Iru/Victoria Island LCDA"] },

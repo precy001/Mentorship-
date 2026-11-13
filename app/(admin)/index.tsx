@@ -8,7 +8,7 @@ export default function AdminDashboard() {
   const app = useApp(); const [newTopic, setNewTopic] = useState(""); const [resourceTitle, setResourceTitle] = useState(""); const [resourceDesc, setResourceDesc] = useState(""); const [schTitle, setSchTitle] = useState(""); const [deadline, setDeadline] = useState("2027-02-01");
   const lgas = ["Lagos Mainland", "Ikeja", "Surulere", "Kano Municipal", "Eti-Osa", "Ibadan North"];
   return <Screen>
-    <Text onPress={() => Alert.alert("Sign out?", "Return to role selection?", [{ text: "Stay", style: "cancel" }, { text: "Sign out", onPress: async () => { await app.logout(); router.replace("/"); } }])} style={{ color: colors.primary, fontWeight: "800" }}>← Sign out</Text>
+    <Text onPress={() => Alert.alert("Sign out?", "Return to role selection?", [{ text: "Stay", style: "cancel" }, { text: "Sign out", onPress: async () => { await app.logout(); router.replace({ pathname: "/auth", params: { mode: "signin", signedOut: "1" } }); } }])} style={{ color: colors.primary, fontWeight: "800" }}>← Sign out</Text>
     <Heading title="Admin dashboard" subtitle={`Platform operations · ${app.user?.name || "Administrator"}`} />
     <Card style={{ backgroundColor: colors.primary, borderColor: colors.primary }}><Text style={{ color: "#B8F2E8", fontWeight: "800" }}>MENTORSHIP+ ADMIN</Text><Text style={{ color: "#fff", fontWeight: "900", fontSize: 22 }}>A clearer view of support.</Text><Text style={{ color: "#E1EDF5" }}>Manage demo access, topics and educational content. Changes persist locally on this device.</Text></Card>
     <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>{[

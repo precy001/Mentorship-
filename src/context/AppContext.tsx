@@ -11,10 +11,6 @@ type User = {
   nin?: string;
   lga?: string;
   state?: string;
-  lcda?: string;
-  phoneNumber?: string;
-  dateOfBirth?: string;
-  school?: string;
   categoryId?: string;
   categoryName?: string;
   categorySlug?: string;
@@ -104,12 +100,6 @@ function toAppUser(user: Awaited<ReturnType<typeof apiMe>>): User {
     subcategoryName: user.profile?.subcategory?.name,
     subcategorySlug: user.profile?.subcategory?.slug,
     avatarUrl: user.profile?.avatarUrl ?? null,
-    phoneNumber: user.profile?.phoneNumber ?? undefined,
-    dateOfBirth: user.profile?.dateOfBirth ?? undefined,
-    state: user.profile?.stateOfResidence ?? undefined,
-    lga: user.profile?.lga ?? undefined,
-    lcda: user.profile?.lcda ?? undefined,
-    school: user.profile?.school ?? undefined,
   };
 }
 
@@ -164,10 +154,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const value = useMemo<ContextValue>(() => ({
     ...state,
     sessionLoading: !loaded,
-    login: async user => patch(current => ({ ...current, user })),
+    // A newly authenticated account starts with a clean, account-scoped client state.
+    login: async user => setState({ ...initial, user }),
+    // Clear the token and every account-scoped local value before leaving the private area.
     logout: async () => {
-      await apiLogout();
-      patch(current => ({ ...current, user: null }));
+      try {
+        await apiLogout();
+      } finally {
+        await AsyncStorage.removeItem(STORAGE_KEY).catch(() => {});
+        setState(initial);
+      }
     },
     toggleResource: id => patch(current => ({ ...current, savedResources: current.savedResources.includes(id) ? current.savedResources.filter(x => x !== id) : [...current.savedResources, id] })),
     toggleScholarship: id => patch(current => ({ ...current, savedScholarships: current.savedScholarships.includes(id) ? current.savedScholarships.filter(x => x !== id) : [...current.savedScholarships, id] })),

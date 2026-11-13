@@ -7,7 +7,7 @@ import { useApp } from "@/src/context/AppContext";
 import { apiLogin, apiResendVerification } from "@/src/lib/api";
 
 export default function AuthScreen() {
-  const params = useLocalSearchParams<{ mode?: string }>();
+  const params = useLocalSearchParams<{ mode?: string; signedOut?: string }>();
   const [mode, setMode] = useState<"signin" | "signup">(
     params.mode === "signup" ? "signup" : "signin",
   );
@@ -56,12 +56,6 @@ export default function AuthScreen() {
         name: user.displayName || normalizedEmail.split("@")[0],
         role: appRole,
         avatarUrl: user.profile?.avatarUrl ?? null,
-        phoneNumber: user.profile?.phoneNumber ?? undefined,
-        dateOfBirth: user.profile?.dateOfBirth ?? undefined,
-        state: user.profile?.stateOfResidence ?? undefined,
-        lga: user.profile?.lga ?? undefined,
-        lcda: user.profile?.lcda ?? undefined,
-        school: user.profile?.school ?? undefined,
         categoryId: user.profile?.category?.id,
         categoryName: user.profile?.category?.name,
         categorySlug: user.profile?.category?.slug,
@@ -118,11 +112,15 @@ export default function AuthScreen() {
 
   return (
     <Screen style={{ flex: 1, paddingTop: 12, gap: 0 }}>
-      <Pressable onPress={() => router.back()} style={{ paddingVertical: 8 }}>
-        <Text style={{ color: colors.primary, fontWeight: "700", fontSize: 14 }}>
-          ‹  Back
-        </Text>
-      </Pressable>
+      {params.signedOut !== "1" ? (
+        <Pressable onPress={() => router.back()} style={{ paddingVertical: 8 }}>
+          <Text style={{ color: colors.primary, fontWeight: "700", fontSize: 14 }}>
+            ‹  Back
+          </Text>
+        </Pressable>
+      ) : (
+        <View style={{ height: 32 }} />
+      )}
 
       <View style={{ alignItems: "center", paddingTop: 18, paddingBottom: 30 }}>
         <Image
