@@ -1,28 +1,16 @@
 
-import { Injectable, InternalServerErrorException, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  InternalServerErrorException,
+  Logger,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import nodemailer, { Transporter } from 'nodemailer';
 
 @Injectable()
 export class MailService {
   private readonly logger = new Logger(MailService.name);
-  private transporter?: Transporter;
 
-  constructor(private readonly config: ConfigService) {
-    const host = this.config.get<string>('SMTP_HOST');
-    const port = Number(this.config.get<string>('SMTP_PORT') ?? 587);
-    const user = this.config.get<string>('SMTP_USER');
-    const pass = this.config.get<string>('SMTP_PASSWORD');
-
-    if (host && user && pass) {
-      this.transporter = nodemailer.createTransport({
-        host,
-        port,
-        secure: port === 465,
-        auth: { user, pass },
-      });
-    }
-  }
+  constructor(private readonly config: ConfigService) {}
 
   async sendActionEmail(
     to: string,
@@ -30,13 +18,15 @@ export class MailService {
     actionUrl: string,
     action: 'verify' | 'reset',
   ): Promise<void> {
+    const apiKey = this.config.get<string>('BREVO_API_KEY');
     const from = this.config.get<string>('EMAIL_FROM');
 
-    if (!this.transporter || !from) {
+    if (!apiKey || !from) {
       if (this.config.get<string>('NODE_ENV') === 'production') {
         this.logger.error(
-          'Email delivery is not configured; authentication email was not sent.',
+          'Brevo email configuration is missing.',
         );
+
         throw new InternalServerErrorException(
           'Email delivery is temporarily unavailable.',
         );
@@ -49,41 +39,85 @@ export class MailService {
       return;
     }
 
+    const senderMatch = from.match(/^\s*(.*?)\s*<([^<>]+)>\s*$/);
+
+    const senderName = senderMatch?.[1]?.trim() || 'Mentorship+';
+    const senderEmail = senderMatch?.[2]?.trim() || from.trim();
+
     try {
       const actionLabel =
-        action === 'verify' ? 'Verify email address' : 'Reset password';
+        action === 'verify'
+          ? 'Verify email address'
+          : 'Reset password';
 
-      await this.transporter.sendMail({
-        from,
-        to,
-        subject,
-        text: `${actionLabel}: ${actionUrl}\n\nIf you did not request this, you can ignore this email.`,
-        html: `<p>${actionLabel}</p><p><a href="${actionUrl}">${actionLabel}</a></p><p>If you did not request this, you can ignore this email.</p>`,
-      });
+      const textContent =
+        `${actionLabel}: ${actionUrl}\n\n` +
+        'If you did not request this, you can ignore this email.';
+
+      const htmlContent = `
+        <!DOCTYPE html>
+        <html>
+          <body>
+            <h2>Mentorship+</h2>
+            <p>${actionLabel}</p>
+            <p>
+              <a href="${actionUrl}">${actionLabel}</a>
+            </p>
+            <p>
+              If you did not request this, you can ignore this email.
+            </p>
+          </body>
+        </html>
+      `;
+
+      const response = await fetch(
+        'https://api.brevo.com/v3/smtp/email',
+        {
+          method: 'POST',
+          headers: {
+            accept: 'application/json',
+            'api-key': apiKey,
+            'content-type': 'application/json',
+          },
+          body: JSON.stringify({
+            sender: {
+              name: senderName,
+              email: senderEmail,
+            },
+            to: [{ email: to }],
+            subject,
+            textContent,
+            htmlContent,
+          }),
+        },
+      );
+
+      const responseBody = await response.text();
+
+      if (!response.ok) {
+        this.logger.error(
+          `Brevo email request failed: ${JSON.stringify({
+            status: response.status,
+            response: responseBody.slice(0, 500),
+          })}`,
+        );
+
+        throw new Error(
+          `Brevo API returned HTTP ${response.status}`,
+        );
+      }
 
       this.logger.log(
-        `${actionLabel} email successfully sent to ${to}.`,
+        `${actionLabel} email accepted by Brevo for ${to}.`,
       );
     } catch (error: unknown) {
-      const smtpError = error as {
-        code?: unknown;
-        responseCode?: unknown;
-        command?: unknown;
-        message?: unknown;
-      };
-
-      const details = {
-        code: smtpError?.code,
-        responseCode: smtpError?.responseCode,
-        command: smtpError?.command,
-        message:
-          typeof smtpError?.message === 'string'
-            ? smtpError.message.slice(0, 300)
-            : 'Unknown SMTP error',
-      };
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Unknown email delivery error';
 
       this.logger.error(
-        `Unable to deliver authentication email: ${JSON.stringify(details)}`,
+        `Unable to deliver authentication email: ${message.slice(0, 300)}`,
       );
 
       throw new InternalServerErrorException(
