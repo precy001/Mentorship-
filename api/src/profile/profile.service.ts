@@ -1,4 +1,4 @@
-import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'node:crypto';
 import { PrismaService } from '../prisma/prisma.service';
@@ -9,6 +9,22 @@ type UploadedImage = { buffer: Buffer; mimetype: string };
 export class ProfileService {
   private readonly logger = new Logger(ProfileService.name);
   constructor(private readonly prisma: PrismaService, private readonly config: ConfigService) {}
+
+  async updateMembership(userId: string, categoryId: string, subcategoryId: string) {
+    const subcategory = await this.prisma.membershipSubcategory.findFirst({
+      where: { id: subcategoryId, categoryId, isActive: true, category: { isActive: true } },
+      select: { id: true, name: true, slug: true, category: { select: { id: true, name: true, slug: true } } },
+    });
+    if (!subcategory) throw new BadRequestException('Choose an active subcategory belonging to the selected category.');
+    const profile = await this.prisma.userProfile.upsert({
+      where: { userId },
+      create: { userId, categoryId, subcategoryId },
+      update: { categoryId, subcategoryId },
+      select: { category: { select: { id: true, name: true, slug: true } }, subcategory: { select: { id: true, name: true, slug: true } } },
+    });
+    await this.prisma.auditLog.create({ data: { actorId: userId, action: 'MEMBERSHIP_CATEGORY_CHANGED', entityType: 'UserProfile', entityId: userId, metadata: { categoryId, subcategoryId } } });
+    return profile;
+  }
 
   async uploadAvatar(userId: string, file: UploadedImage): Promise<{ avatarUrl: string }> {
     const supabaseUrl = this.config.get<string>('SUPABASE_URL')?.replace(/\/$/, '');

@@ -16,7 +16,7 @@ export class MailService {
     to: string,
     subject: string,
     actionUrl: string,
-    action: 'verify' | 'reset',
+    action: 'verify' | 'reset' | 'invite',
   ): Promise<void> {
     const apiKey = this.config.get<string>('BREVO_API_KEY');
     const from = this.config.get<string>('EMAIL_FROM');
@@ -46,9 +46,9 @@ export class MailService {
 
     try {
       const actionLabel =
-        action === 'verify'
-          ? 'Verify email address'
-          : 'Reset password';
+        action === 'verify' ? 'Verify email address'
+          : action === 'reset' ? 'Reset password'
+            : 'Accept your Mentorship+ counsellor invitation';
 
       const textContent =
         `${actionLabel}: ${actionUrl}\n\n` +

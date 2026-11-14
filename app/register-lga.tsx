@@ -1,29 +1,38 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Alert, Pressable, Text, View } from "react-native";
 import { router } from "expo-router";
 import { Screen, Button, Card } from "@/src/components/UI";
 import { colors } from "@/src/lib/theme";
+import { apiGetLocations } from "@/src/lib/api";
 
-const locations = [
-  { state: "Lagos", lga: "Ikorodu", lcs: ["Ikorodu West LCDA", "Ikorodu North LCDA", "Igbogbo-Baiyeku LCDA", "Imota LCDA", "Ijede LCDA"] },
-  { state: "Lagos", lga: "Ikeja", lcs: ["Ikeja LCDA", "Ojodu LCDA", "Onigbongbo LCDA"] },
-  { state: "Lagos", lga: "Alimosho", lcs: ["Agbado/Oke-Odo LCDA", "Ayobo-Ipaja LCDA", "Egbe-Idimu LCDA", "Ikotun-Igando LCDA", "Mosan-Okunola LCDA"] },
-  { state: "Lagos", lga: "Eti-Osa", lcs: ["Ikoyi-Obalende LCDA", "Lekki LCDA", "Iru/Victoria Island LCDA"] },
-  { state: "Lagos", lga: "Lagos Mainland", lcs: ["Yaba LCDA", "Odi-Olowo/Ojuwoye LCDA"] },
-  { state: "Lagos", lga: "Surulere", lcs: ["Itire-Ikate LCDA", "Coker-Aguda LCDA"] },
-  { state: "Lagos", lga: "Kosofe", lcs: ["Ikosi-Isheri LCDA", "Agboyi-Ketu LCDA"] },
-  { state: "Lagos", lga: "Oshodi-Isolo", lcs: ["Isolo LCDA", "Ejigbo LCDA"] },
-  { state: "Lagos", lga: "Other / not listed", lcs: ["Other LCDA"] },
-];
+type LocationGroup = { state: string; lga: string; lcs: string[] };
+
 
 export default function RegisterLga() {
+  const [locations, setLocations] = useState<LocationGroup[]>([]);
+  const [loadingLocations, setLoadingLocations] = useState(true);
+  const [locationError, setLocationError] = useState("");
+  useEffect(() => {
+    let active = true;
+    apiGetLocations().then(result => {
+      const groups = new Map<string, LocationGroup>();
+      for (const item of result.locations) {
+        const key = `${item.state}::${item.lga}`;
+        const group = groups.get(key) || { state: item.state, lga: item.lga, lcs: [] };
+        group.lcs.push(item.lcda); groups.set(key, group);
+      }
+      if (active) { setLocations([...groups.values()]); setLocationError(""); }
+    }).catch(error => { if (active) setLocationError(error instanceof Error ? error.message : "Service areas could not be loaded."); })
+      .finally(() => { if (active) setLoadingLocations(false); });
+    return () => { active = false; };
+  }, []);
   const [selectedLga, setSelectedLga] = useState<string | null>(null);
   const [selectedLcda, setSelectedLcda] = useState<string | null>(null);
   const [confirmed, setConfirmed] = useState(false);
 
   const chosen = useMemo(
     () => locations.find((item) => item.lga === selectedLga) ?? null,
-    [selectedLga],
+    [locations, selectedLga],
   );
   const validLcda = Boolean(chosen && selectedLcda && chosen.lcs.includes(selectedLcda));
 
@@ -82,6 +91,9 @@ export default function RegisterLga() {
         Select your LGA / LCDA
       </Text>
 
+      {loadingLocations ? <Text style={{ color: colors.muted }}>Loading available service areas…</Text> : null}
+      {!!locationError ? <Card><Text style={{ color: colors.error, fontWeight: "800" }}>Locations unavailable</Text><Text style={{ color: colors.muted }}>{locationError}</Text></Card> : null}
+      {!loadingLocations && !locationError && !locations.length ? <Card><Text style={{ color: colors.muted }}>No registration areas are currently enabled. Please contact Mentorship+ support.</Text></Card> : null}
       <View style={{ gap: 9 }}>
         {locations.map((item) => {
           const active = selectedLga === item.lga;
@@ -185,7 +197,7 @@ export default function RegisterLga() {
         </Card>
       )}
 
-      <Button title="Continue to profile" onPress={continueNext} />
+      <Button title="Continue to profile" onPress={continueNext} disabled={loadingLocations || !!locationError || !locations.length} />
       <Text style={{ color: colors.mutedLight, textAlign: "center", fontSize: 11, lineHeight: 16 }}>
         Choose the correct location for your profile. Location availability will be expanded before nationwide launch.
       </Text>

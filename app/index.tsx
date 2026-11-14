@@ -4,8 +4,16 @@ import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { Screen, Button } from "@/src/components/UI";
 import { colors } from "@/src/lib/theme";
+import { useApp } from "@/src/context/AppContext";
 
 export default function Welcome() {
+  const app = useApp();
+  useEffect(() => {
+    if (app.sessionLoading || !app.user) return;
+    if (app.user.role === "admin" || app.user.role === "super_admin") router.replace("/(admin)");
+    else if (app.user.role === "counsellor") router.replace("/(counsellor)");
+    else router.replace("/(student)");
+  }, [app.sessionLoading, app.user]);
   const opacity = useRef(new Animated.Value(0)).current;
   const scale = useRef(new Animated.Value(0.84)).current;
   const rise = useRef(new Animated.Value(22)).current;

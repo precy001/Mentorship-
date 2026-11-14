@@ -1,15 +1,29 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Alert, ActivityIndicator, Image, Text, View } from "react-native";
 import * as ImagePicker from "expo-image-picker";
 import { router } from "expo-router";
 import { Screen, Heading, Card, Button, Row } from "@/src/components/UI";
 import { useApp } from "@/src/context/AppContext";
 import { colors } from "@/src/lib/theme";
-import { apiUploadProfilePicture } from "@/src/lib/api";
+import { apiGetMembershipCategories, apiUpdateMembership, apiUploadProfilePicture, apiListActivities, MembershipCategory } from "@/src/lib/api";
 
 export default function Profile() {
   const app = useApp();
   const [uploading, setUploading] = useState(false);
+  const [categories, setCategories] = useState<MembershipCategory[]>([]);
+  const [categoryId, setCategoryId] = useState(app.user?.categoryId || "");
+  const [subcategoryId, setSubcategoryId] = useState(app.user?.subcategoryId || "");
+  const [savingMembership, setSavingMembership] = useState(false);
+  const [moodCount, setMoodCount] = useState(0);
+  useEffect(() => { apiGetMembershipCategories().then(setCategories).catch(error => Alert.alert("Membership options unavailable", error instanceof Error ? error.message : "Please try again.")); apiListActivities("WELLBEING_CHECKIN").then(items => setMoodCount(items.length)).catch(() => {}); }, []);
+  const selectedCategory = categories.find(item => item.id === categoryId);
+  const selectedSubcategory = selectedCategory?.subcategories.find(item => item.id === subcategoryId);
+  const saveMembership = async () => {
+    if (!selectedCategory || !selectedSubcategory) return Alert.alert("Choose your membership", "Select a category and a matching subcategory.");
+    try { setSavingMembership(true); await apiUpdateMembership(categoryId, subcategoryId); app.updateMembership({ categoryId, categoryName: selectedCategory.name, categorySlug: selectedCategory.slug, subcategoryId, subcategoryName: selectedSubcategory.name, subcategorySlug: selectedSubcategory.slug }); Alert.alert("Membership updated", "Your dashboard will now reflect your selected category."); }
+    catch (error) { Alert.alert("Update failed", error instanceof Error ? error.message : "Your membership could not be updated."); }
+    finally { setSavingMembership(false); }
+  };
   const masked = app.user?.nin ? `•••••••${app.user.nin.slice(-4)}` : "Not linked";
 
   const changePicture = async () => {
@@ -73,6 +87,16 @@ export default function Profile() {
         <Text style={{ color: colors.ink }}>State · {app.user?.state || "—"}</Text>
       </Card>
 
+      <Card>
+        <Text style={{ color: colors.ink, fontWeight: "800", fontSize: 16 }}>Membership category</Text>
+        <Text style={{ color: colors.muted, fontSize: 13 }}>You can change your category and subcategory. Your existing profile information will be retained.</Text>
+        <Text style={{ color: colors.ink, fontWeight: "700" }}>Category</Text>
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>{categories.map(category => <Text key={category.id} onPress={() => { setCategoryId(category.id); setSubcategoryId(""); }} style={{ paddingHorizontal: 12, paddingVertical: 9, borderRadius: 18, overflow: "hidden", color: categoryId === category.id ? "#fff" : colors.ink, backgroundColor: categoryId === category.id ? colors.primary : colors.softBlue, fontWeight: "700" }}>{category.name}</Text>)}</View>
+        <Text style={{ color: colors.ink, fontWeight: "700" }}>Subcategory</Text>
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>{(selectedCategory?.subcategories || []).map(subcategory => <Text key={subcategory.id} onPress={() => setSubcategoryId(subcategory.id)} style={{ paddingHorizontal: 12, paddingVertical: 9, borderRadius: 18, overflow: "hidden", color: subcategoryId === subcategory.id ? "#fff" : colors.ink, backgroundColor: subcategoryId === subcategory.id ? colors.primary : colors.softBlue, fontWeight: "700" }}>{subcategory.name}</Text>)}</View>
+        <Button title={savingMembership ? "Saving…" : "Save membership changes"} onPress={() => void saveMembership()} disabled={savingMembership || !categoryId || !subcategoryId} />
+      </Card>
+
       <Button title="Verify NIN" onPress={verifyNin} variant="secondary" />
 
       <Card>
@@ -80,7 +104,7 @@ export default function Profile() {
         <Row style={{ justifyContent: "space-between" }}><Text style={{ color: colors.muted }}>Saved resources</Text><Text style={{ color: colors.ink, fontWeight: "800" }}>{app.savedResources.length}</Text></Row>
         <Row style={{ justifyContent: "space-between" }}><Text style={{ color: colors.muted }}>Saved scholarships</Text><Text style={{ color: colors.ink, fontWeight: "800" }}>{app.savedScholarships.length}</Text></Row>
         <Row style={{ justifyContent: "space-between" }}><Text style={{ color: colors.muted }}>Appointments</Text><Text style={{ color: colors.ink, fontWeight: "800" }}>{app.bookings.filter(b => b.status !== "cancelled").length}</Text></Row>
-        <Row style={{ justifyContent: "space-between" }}><Text style={{ color: colors.muted }}>Mood check-ins</Text><Text style={{ color: colors.ink, fontWeight: "800" }}>{app.moods.length}</Text></Row>
+        <Row style={{ justifyContent: "space-between" }}><Text style={{ color: colors.muted }}>Mood check-ins</Text><Text style={{ color: colors.ink, fontWeight: "800" }}>{moodCount}</Text></Row>
       </Card>
 
       <Button title="Saved items" onPress={() => router.push({ pathname: "/feature/[slug]", params: { slug: "saved" } })} variant="secondary" />

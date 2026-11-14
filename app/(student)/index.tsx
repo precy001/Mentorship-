@@ -1,5 +1,5 @@
 import React from "react";
-import { Text, View, Pressable } from "react-native";
+import { Alert, Text, View, Pressable } from "react-native";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Screen, Heading, Card, Row, Pill } from "@/src/components/UI";
@@ -9,14 +9,16 @@ import { useApp } from "@/src/context/AppContext";
 export default function StudentHome() {
   const app = useApp();
   const name = app.user?.name?.split(" ")[0] || "there";
-  const go = (slug: string) => router.push({ pathname: "/feature/[slug]", params: { slug } });
+  const go = (slug: string) => slug === "counselling" ? router.push("/(student)/counselling") : slug === "scholarships" ? router.push({ pathname: "/(student)/explore", params: { tab: "scholarships" } }) : slug === "explore" ? router.push("/(student)/explore") : router.push({ pathname: "/feature/[slug]", params: { slug } });
   const categorySlug = app.user?.categorySlug || "";
   const isEducation = categorySlug === "education-learning";
   const isCareer = categorySlug === "work-career";
+  const subcategorySlug = app.user?.subcategorySlug || "";
+  const isBusinessFocused = ["self-employed-business-owner", "artisan-skilled-tradesperson", "freelancer-gig-worker"].includes(subcategorySlug);
   const focusLabel = app.user?.subcategoryName || app.user?.categoryName || "your next step";
   const quick = [
     ...(isEducation ? [{ title: "Learning resources", slug: "resources", icon: "book-outline" as const }, { title: "Scholarships", slug: "scholarships", icon: "school-outline" as const }] : []),
-    ...(isCareer ? [{ title: "Career growth", slug: "career", icon: "trending-up-outline" as const }, { title: "Business guidance", slug: "business", icon: "briefcase-outline" as const }] : []),
+    ...(isCareer ? [isBusinessFocused ? { title: "Business guidance", slug: "business", icon: "briefcase-outline" as const } : { title: "Career growth", slug: "career", icon: "trending-up-outline" as const }] : []),
     ...(!isEducation && !isCareer ? [{ title: "Explore opportunities", slug: "explore", icon: "compass-outline" as const }] : []),
     { title: "Speak to a counsellor", slug: "counselling", icon: "chatbubble-ellipses-outline" as const },
     { title: "Book appointment", slug: "booking", icon: "calendar-outline" as const },
@@ -70,7 +72,7 @@ export default function StudentHome() {
       </Row>
       <Card>
         {app.goals.slice(0, 3).map((g, i) => (
-          <Pressable key={g.id} onPress={() => app.toggleGoal(g.id)} style={{ flexDirection: "row", alignItems: "center", gap: 11, paddingVertical: 7, borderBottomWidth: i < Math.min(app.goals.length, 3) - 1 ? 1 : 0, borderBottomColor: colors.line }}>
+          <Pressable key={g.id} onPress={() => { void app.toggleGoal(g.id).catch(error => Alert.alert("Goal not updated", error instanceof Error ? error.message : "Please try again.")); }} style={{ flexDirection: "row", alignItems: "center", gap: 11, paddingVertical: 7, borderBottomWidth: i < Math.min(app.goals.length, 3) - 1 ? 1 : 0, borderBottomColor: colors.line }}>
             <Ionicons name={g.done ? "checkmark-circle" : "ellipse-outline"} size={21} color={g.done ? colors.primary : colors.mutedLight} />
             <Text style={{ color: colors.ink, textDecorationLine: g.done ? "line-through" : "none", flex: 1, lineHeight: 20 }}>{g.title}</Text>
           </Pressable>
@@ -88,10 +90,10 @@ export default function StudentHome() {
           </Card>
         </Pressable>
       ))}
-      {app.bookings.filter(b => b.status === "confirmed").length > 0 && (
+      {app.bookings.filter(b => ["requested", "confirmed", "rescheduled"].includes(b.status) && new Date(b.startsAt).getTime() > Date.now()).length > 0 && (
         <Card>
-          <Heading title="Upcoming appointment" small />
-          {app.bookings.filter(b => b.status === "confirmed").map(b => <Text key={b.id} style={{ color: colors.ink }}>{b.counsellor} · {b.date} · {b.time}</Text>)}
+          <Heading title="Upcoming appointments" small />
+          {app.bookings.filter(b => ["requested", "confirmed", "rescheduled"].includes(b.status) && new Date(b.startsAt).getTime() > Date.now()).map(b => <Text key={b.id} style={{ color: colors.ink }}>{b.topic} · {new Date(b.startsAt).toLocaleString()} · {b.status}</Text>)}
         </Card>
       )}
     </Screen>

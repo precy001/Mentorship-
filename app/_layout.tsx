@@ -12,6 +12,8 @@ export default function RootLayout() {
         <Stack.Screen name="verify" options={{ presentation: "card" }} />
         <Stack.Screen name="forgot-password" options={{ presentation: "card" }} />
         <Stack.Screen name="reset-password" options={{ presentation: "card" }} />
+        <Stack.Screen name="counsellor-invite" options={{ presentation: "card" }} />
+        <Stack.Screen name="discussion/[id]" options={{ presentation: "card" }} />
         <Stack.Screen name="auth" options={{ presentation: "card" }} />
         <Stack.Screen name="register-lga" options={{ presentation: "card" }} />
         <Stack.Screen name="register-biodata" options={{ presentation: "card" }} />

@@ -1,20 +1,242 @@
-import React, { useState } from "react";
-import { Text, View, Pressable, Alert } from "react-native";
+
+import React, { useCallback, useEffect, useState } from "react";
+import { ActivityIndicator, Alert, Text, View, Pressable } from "react-native";
 import { router } from "expo-router";
-import { Screen, Heading, Card, Button, Pill } from "@/src/components/UI";
+import { Screen, Heading, Card, Button, Pill, Field } from "@/src/components/UI";
 import { colors } from "@/src/lib/theme";
 import { useApp } from "@/src/context/AppContext";
+import {
+  apiCreateDiscussion,
+  apiDiscussionTopics,
+  apiListDiscussions,
+  DiscussionRecord,
+  DiscussionTopic,
+} from "@/src/lib/api";
+
 export default function Counselling() {
-  const app = useApp(); const [topic, setTopic] = useState("Career");
-  const go = (slug: string) => router.push({ pathname: "/feature/[slug]", params: { slug } });
-  const eligible = app.counsellors.filter(c => c.topics.includes(topic));
-  return <Screen>
-    <Heading title="You don’t have to do it alone" subtitle="Choose the kind of support that feels right for you." />
-    <Pressable onPress={() => go("ai")}><Card style={{ backgroundColor: colors.primary, borderColor: colors.primary }}><Text style={{ color: "#B8F2E8", fontWeight: "800" }}>AI COUNSELLOR</Text><Text style={{ color: "#fff", fontWeight: "900", fontSize: 20 }}>Talk it through, anytime.</Text><Text style={{ color: "#E1EDF5" }}>Explore study plans, career questions, or general wellbeing with guided automated responses.</Text><Text style={{ color: "#B8F2E8", fontWeight: "800" }}>Start a conversation →</Text></Card></Pressable>
-    <Heading title="Talk to a human counsellor" small subtitle="Choose a topic to find an eligible counsellor." />
-    <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>{app.topics.map(t => <Pressable key={t} onPress={() => setTopic(t)}><View style={{ paddingHorizontal: 14, paddingVertical: 10, borderRadius: 22, backgroundColor: topic === t ? colors.primary : "#fff", borderWidth: 1, borderColor: topic === t ? colors.primary : colors.line }}><Text style={{ color: topic === t ? "#fff" : colors.ink, fontWeight: "700" }}>{t}</Text></View></Pressable>)}</View>
-    {eligible.length ? eligible.map(c => <Card key={c.id}><View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}><View style={{ width: 48, height: 48, borderRadius: 16, backgroundColor: colors.softBlue, alignItems: "center", justifyContent: "center" }}><Text style={{ fontSize: 20 }}>☺</Text></View><View style={{ flex: 1, gap: 4 }}><Text style={{ color: colors.ink, fontWeight: "800", fontSize: 16 }}>{c.name}</Text><Text style={{ color: colors.muted, fontSize: 12 }}>{c.availability}</Text></View></View><Text style={{ color: colors.muted, lineHeight: 20 }}>{c.bio}</Text><Text style={{ color: colors.primary, fontSize: 12, fontWeight: "700" }}>Topics: {c.topics.join(", ")}</Text><Button title="Start private discussion" onPress={() => { Alert.alert("Discussion started", `Discussion preview for ${c.name} for ${topic}. Messages can be tested in the discussion screen.`, [{ text: "Continue", onPress: () => go("discussion") }]); }} /></Card>) : <Card><Text style={{ color: colors.ink, fontWeight: "800" }}>No counsellor available for {topic}</Text><Text style={{ color: colors.muted }}>Try another topic or return later. The app will not route you to an unrelated counsellor.</Text></Card>}
-    <Button title="Book an appointment" onPress={() => go("booking")} variant="secondary" />
-    <Button title="My discussions" onPress={() => go("discussion")} variant="ghost" />
-  </Screen>;
+  const app = useApp();
+
+  const [topics, setTopics] = useState<DiscussionTopic[]>([]);
+  const [selectedTopic, setSelectedTopic] = useState("");
+  const [title, setTitle] = useState("");
+  const [message, setMessage] = useState("");
+  const [discussions, setDiscussions] = useState<DiscussionRecord[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [creating, setCreating] = useState(false);
+
+  const refresh = useCallback(async () => {
+    try {
+      const [availableTopics, ownDiscussions] = await Promise.all([
+        apiDiscussionTopics(),
+        apiListDiscussions(),
+      ]);
+
+      setTopics(availableTopics);
+      setDiscussions(ownDiscussions);
+
+      setSelectedTopic((current) =>
+        availableTopics.some((topic) => topic.id === current)
+          ? current
+          : availableTopics[0]?.id || ""
+      );
+    } catch (error) {
+      Alert.alert(
+        "Counselling unavailable",
+        error instanceof Error ? error.message : "Please try again."
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  const create = async () => {
+    if (!selectedTopic || !title.trim() || !message.trim()) {
+      return Alert.alert(
+        "Complete the form",
+        "Choose a topic and enter a title and opening message."
+      );
+    }
+
+    try {
+      setCreating(true);
+
+      const discussion = await apiCreateDiscussion({
+        topicId: selectedTopic,
+        title: title.trim(),
+        message: message.trim(),
+      });
+
+      setTitle("");
+      setMessage("");
+
+      await refresh();
+      await app.refreshAccountData();
+
+      router.push({
+        pathname: "/discussion/[id]",
+        params: { id: discussion.id },
+      });
+    } catch (error) {
+      Alert.alert(
+        "Could not start discussion",
+        error instanceof Error ? error.message : "Please try again."
+      );
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  return (
+    <Screen>
+      <Heading
+        title="You don’t have to do it alone"
+        subtitle="Start a private discussion with a counsellor assigned to your chosen topic."
+      />
+
+      <Card style={{ backgroundColor: colors.primary, borderColor: colors.primary }}>
+        <Text style={{ color: "#B8F2E8", fontWeight: "800" }}>
+          PRIVATE COUNSELLING
+        </Text>
+        <Text style={{ color: "#fff", fontWeight: "900", fontSize: 20 }}>
+          A real conversation, handled securely.
+        </Text>
+        <Text style={{ color: "#E1EDF5" }}>
+          Your discussion is visible to you, your assigned counsellor and
+          authorised administrators. The system only assigns counsellors who
+          cover your topic and have capacity.
+        </Text>
+      </Card>
+
+      <Heading title="Start a discussion" small />
+
+      <Card>
+        <Text style={{ color: colors.ink, fontWeight: "800" }}>
+          Choose a topic
+        </Text>
+
+        {loading ? (
+          <ActivityIndicator color={colors.primary} />
+        ) : topics.length ? (
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+            {topics.map((topic) => (
+              <Pressable
+                key={topic.id}
+                onPress={() => setSelectedTopic(topic.id)}
+              >
+                <View
+                  style={{
+                    paddingHorizontal: 13,
+                    paddingVertical: 10,
+                    borderRadius: 22,
+                    backgroundColor:
+                      selectedTopic === topic.id
+                        ? colors.primary
+                        : colors.softBlue,
+                  }}
+                >
+                  <Text
+                    style={{
+                      color: selectedTopic === topic.id ? "#fff" : colors.ink,
+                      fontWeight: "700",
+                    }}
+                  >
+                    {topic.name}
+                  </Text>
+                </View>
+              </Pressable>
+            ))}
+          </View>
+        ) : (
+          <Text style={{ color: colors.muted }}>
+            No counselling topics are currently available.
+          </Text>
+        )}
+
+        <Field
+          label="Discussion title"
+          value={title}
+          onChangeText={setTitle}
+          placeholder="What would you like support with?"
+        />
+
+        <Field
+          label="Opening message"
+          value={message}
+          onChangeText={setMessage}
+          placeholder="Share a little context to help your counsellor understand…"
+          multiline
+        />
+
+        <Button
+          title={creating ? "Starting…" : "Start private discussion"}
+          onPress={() => void create()}
+          disabled={creating || loading || !selectedTopic}
+        />
+      </Card>
+
+      <Heading title="Your discussions" small />
+
+      {discussions.length ? (
+        discussions.map((item) => (
+          <Pressable
+            key={item.id}
+            onPress={() =>
+              router.push({
+                pathname: "/discussion/[id]",
+                params: { id: item.id },
+              })
+            }
+          >
+            <Card>
+              <View
+                style={{
+                  flexDirection: "row",
+                  justifyContent: "space-between",
+                  gap: 8,
+                }}
+              >
+                <Text
+                  style={{
+                    color: colors.ink,
+                    fontWeight: "800",
+                    flex: 1,
+                  }}
+                >
+                  {item.title}
+                </Text>
+
+                <Pill
+                  label={item.status.replaceAll("_", " ")}
+                  tone={
+                    item.status === "COMPLETED" ||
+                    item.status === "CANCELLED"
+                      ? "red"
+                      : "green"
+                  }
+                />
+              </View>
+
+              <Text style={{ color: colors.muted, fontSize: 12 }}>
+                {item.topic.name} · {item._count?.messages ?? 0} messages
+              </Text>
+
+              <Text style={{ color: colors.primary, fontWeight: "800" }}>
+                Open discussion →
+              </Text>
+            </Card>
+          </Pressable>
+        ))
+      ) : (
+        <Card>
+          <Text style={{ color: colors.muted }}>
+            You have not started a counselling discussion yet.
+          </Text>
+        </Card>
+      )}
+    </Screen>
+  );
 }

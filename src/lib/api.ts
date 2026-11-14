@@ -444,3 +444,86 @@ export async function apiUploadProfilePicture(
     clearTimeout(timeout);
   }
 }
+
+export type AdminDashboardStats = {
+  users: number; members: number; counsellors: number; admins: number;
+  topics: number; openDiscussions: number; appointments: number; pendingRatings: number; resources: number; scholarships: number;
+};
+export type AdminUser = {
+  id: string; email: string; displayName: string | null;
+  role: "MEMBER" | "COUNSELLOR" | "ADMIN" | "SUPER_ADMIN";
+  status: string; emailVerifiedAt: string | null; createdAt: string;
+  counsellorProfile?: { availability: string; averageRating: number | null; ratingCount: number; topics: { topic: { id: string; name: string } }[] } | null;
+  profile?: { category: { name: string } | null; subcategory: { name: string } | null } | null;
+};
+export type AdminTopic = { id: string; name: string; description: string | null; isActive: boolean; _count: { counsellors: number; discussions: number } };
+export type DiscussionTopic = { id: string; name: string; description: string | null };
+export type DiscussionRecord = {
+  id: string; title: string; status: string; createdAt: string; updatedAt: string;
+  topic: { id: string; name: string }; creator?: { id: string; displayName: string | null };
+  assignments?: { counsellor: { user: { id: string; displayName: string | null } } }[];
+  _count?: { messages: number };
+};
+export type DiscussionMessage = { id: string; body: string; createdAt: string; author: { id: string; displayName: string | null; role: string } };
+
+export const apiAdminDashboard = () => apiRequest<AdminDashboardStats>("/admin/dashboard", {}, true);
+export const apiAdminUsers = (search = "") => apiRequest<AdminUser[]>(`/admin/users${search ? `?search=${encodeURIComponent(search)}` : ""}`, {}, true);
+export const apiAdminSetRole = (userId: string, role: AdminUser["role"]) => apiRequest<Pick<AdminUser, "id" | "email" | "displayName" | "role" | "status">>(`/admin/users/${encodeURIComponent(userId)}/role`, { method: "PATCH", body: JSON.stringify({ role }) }, true);
+export const apiAdminTopics = () => apiRequest<AdminTopic[]>("/admin/topics", {}, true);
+export const apiAdminCreateTopic = (name: string, description?: string) => apiRequest<Omit<AdminTopic, "_count">>("/admin/topics", { method: "POST", body: JSON.stringify({ name, description }) }, true);
+export const apiAdminSetTopicActive = (id: string, isActive: boolean) => apiRequest<Omit<AdminTopic, "_count">>(`/admin/topics/${encodeURIComponent(id)}/active`, { method: "PATCH", body: JSON.stringify({ isActive }) }, true);
+export const apiAdminAssignTopics = (userId: string, topicIds: string[]) => apiRequest(`/admin/counsellors/${encodeURIComponent(userId)}/topics`, { method: "PATCH", body: JSON.stringify({ topicIds }) }, true);
+export const apiAdminSetCounsellorAvailability = (userId: string, availability: "AVAILABLE" | "OFFLINE" | "ON_LEAVE") => apiRequest(`/admin/counsellors/${encodeURIComponent(userId)}/availability`, { method: "PATCH", body: JSON.stringify({ availability }) }, true);
+export const apiDiscussionTopics = () => apiRequest<DiscussionTopic[]>("/discussions/topics", {}, true);
+export const apiCreateDiscussion = (input: { topicId: string; title: string; message: string }) => apiRequest<DiscussionRecord>("/discussions", { method: "POST", body: JSON.stringify(input) }, true);
+export const apiListDiscussions = () => apiRequest<DiscussionRecord[]>("/discussions", {}, true);
+export const apiGetDiscussion = (id: string) => apiRequest<DiscussionRecord & { messages: DiscussionMessage[] }>(`/discussions/${encodeURIComponent(id)}`, {}, true);
+export const apiSendDiscussionMessage = (id: string, body: string) => apiRequest<DiscussionMessage>(`/discussions/${encodeURIComponent(id)}/messages`, { method: "POST", body: JSON.stringify({ body }) }, true);
+export const apiSetDiscussionStatus = (id: string, status: "IN_PROGRESS" | "WAITING_FOR_MEMBER" | "COMPLETED" | "CANCELLED") => apiRequest(`/discussions/${encodeURIComponent(id)}/status`, { method: "PATCH", body: JSON.stringify({ status }) }, true);
+export const apiUpdateMembership = (categoryId: string, subcategoryId: string) => apiRequest<{ category: { id: string; name: string; slug: string }; subcategory: { id: string; name: string; slug: string } }>("/profile/membership", { method: "PATCH", body: JSON.stringify({ categoryId, subcategoryId }) }, true);
+export type CounsellorSelf = { availability: string; activeDiscussions: number; averageRating: number | null; ratingCount: number; topics: { id: string; name: string }[] };
+export const apiCounsellorMe = () => apiRequest<CounsellorSelf>("/discussions/counsellor/me", {}, true);
+export const apiCounsellorSetAvailability = (availability: "AVAILABLE" | "OFFLINE" | "ON_LEAVE") => apiRequest<CounsellorSelf>("/discussions/counsellor/availability", { method: "PATCH", body: JSON.stringify({ availability }) }, true);
+export type ActivityRecord = { id: string; type: string; payload: Record<string, unknown>; createdAt: string; updatedAt: string };
+export type UserNotification = { id: string; title: string; body: string; type: string; readAt: string | null; createdAt: string };
+export const apiListActivities = (type?: string) => apiRequest<ActivityRecord[]>(`/activities${type ? `?type=${encodeURIComponent(type)}` : ""}`, {}, true);
+export const apiCreateActivity = (type: "CAREER_ASSESSMENT" | "WELLBEING_CHECKIN" | "PERSONAL_GOAL", payload: Record<string, unknown>) => apiRequest<ActivityRecord>("/activities", { method: "POST", body: JSON.stringify({ type, payload }) }, true);
+export const apiUpdateActivity = (id: string, type: "CAREER_ASSESSMENT" | "WELLBEING_CHECKIN" | "PERSONAL_GOAL", payload: Record<string, unknown>) => apiRequest<ActivityRecord>(`/activities/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify({ type, payload }) }, true);
+export const apiListNotifications = () => apiRequest<UserNotification[]>("/activities/notifications", {}, true);
+export const apiMarkNotificationRead = (id: string) => apiRequest<{ success: boolean }>(`/activities/notifications/${encodeURIComponent(id)}/read`, { method: "POST" }, true);
+export type AppointmentRecord = { id: string; status: string; startsAt: string; endsAt: string; notes: string | null; topic: { id: string; name: string } | null; member?: { id: string; displayName: string | null; email?: string }; counsellor: { user: { id: string; displayName: string | null; email?: string } } };
+export const apiListAppointments = () => apiRequest<AppointmentRecord[]>("/appointments", {}, true);
+export const apiCreateAppointment = (input: { topicId: string; startsAt: string; endsAt: string; notes?: string }) => apiRequest<AppointmentRecord>("/appointments", { method: "POST", body: JSON.stringify(input) }, true);
+export const apiUpdateAppointmentStatus = (id: string, status: "CONFIRMED" | "COMPLETED" | "CANCELLED" | "NO_SHOW") => apiRequest<AppointmentRecord>(`/appointments/${encodeURIComponent(id)}/status`, { method: "PATCH", body: JSON.stringify({ status }) }, true);
+export const apiAdminSetAccountStatus = (userId: string, status: "ACTIVE" | "SUSPENDED" | "DEACTIVATED") => apiRequest(`/admin/users/${encodeURIComponent(userId)}/status`, { method: "PATCH", body: JSON.stringify({ status }) }, true);
+export const apiAdminInviteCounsellor = (email: string, topicIds: string[]) => apiRequest<{ message: string }>("/admin/counsellors/invitations", { method: "POST", body: JSON.stringify({ email: email.trim().toLowerCase(), topicIds }) }, true);
+export const apiAcceptCounsellorInvitation = (token: string) => apiRequest<{ id: string; email: string; role: string }>("/admin/counsellors/invitations/accept", { method: "POST", body: JSON.stringify({ token }) }, true);
+export type AdminResource = { id: string; title: string; category: string; readTime: string; description: string; isActive: boolean };
+export type AdminScholarship = { id: string; title: string; provider: string; level: string; deadline: string; eligibility: string; description: string; isActive: boolean };
+export type ServiceAreaRecord = { id: string; state: string; lga: string; lcda: string; isActive: boolean };
+export type PublicResource = AdminResource;
+export type PublicScholarship = AdminScholarship;
+export const apiAdminResources = () => apiRequest<AdminResource[]>("/admin/resources", {}, true);
+export const apiAdminCreateResource = (input: Omit<AdminResource, "id" | "isActive">) => apiRequest<AdminResource>("/admin/resources", { method: "POST", body: JSON.stringify(input) }, true);
+export const apiAdminSetResourceActive = (id: string, isActive: boolean) => apiRequest<AdminResource>(`/admin/resources/${encodeURIComponent(id)}/active`, { method: "PATCH", body: JSON.stringify({ isActive }) }, true);
+export const apiAdminScholarships = () => apiRequest<AdminScholarship[]>("/admin/scholarships", {}, true);
+export const apiAdminCreateScholarship = (input: Omit<AdminScholarship, "id" | "isActive">) => apiRequest<AdminScholarship>("/admin/scholarships", { method: "POST", body: JSON.stringify(input) }, true);
+export const apiAdminSetScholarshipActive = (id: string, isActive: boolean) => apiRequest<AdminScholarship>(`/admin/scholarships/${encodeURIComponent(id)}/active`, { method: "PATCH", body: JSON.stringify({ isActive }) }, true);
+export const apiAdminServiceAreas = () => apiRequest<ServiceAreaRecord[]>("/admin/service-areas", {}, true);
+export const apiAdminSetServiceAreaActive = (id: string, isActive: boolean) => apiRequest<ServiceAreaRecord>(`/admin/service-areas/${encodeURIComponent(id)}/active`, { method: "PATCH", body: JSON.stringify({ isActive }) }, true);
+export const apiGetLocations = () => apiRequest<{ locations: Omit<ServiceAreaRecord, "isActive">[] }>("/membership/locations");
+export const apiGetPublicResources = () => apiRequest<PublicResource[]>("/content/resources");
+export const apiGetPublicScholarships = () => apiRequest<PublicScholarship[]>("/content/scholarships");
+export type PendingRating = { id: string; score: number; feedback: string | null; createdAt: string; author: { id: string; displayName: string | null; email: string }; counsellor: { user: { id: string; displayName: string | null; email: string } }; discussion: { id: string; title: string } | null; appointment: { id: string; startsAt: string } | null };
+export const apiAdminPendingRatings = () => apiRequest<PendingRating[]>("/ratings/pending", {}, true);
+export const apiAdminModerateRating = (id: string, status: "APPROVED" | "REJECTED") => apiRequest(`/ratings/${encodeURIComponent(id)}/moderation`, { method: "PATCH", body: JSON.stringify({ status }) }, true);
+export const apiCreateRating = (input: { discussionId?: string; appointmentId?: string; score: number; feedback?: string }) => apiRequest("/ratings", { method: "POST", body: JSON.stringify(input) }, true);
+export type UnassignedDiscussion = { id: string; title: string; createdAt: string; topic: { id: string; name: string }; creator: { id: string; displayName: string | null; email: string }; _count: { messages: number } };
+export const apiAdminUnassignedDiscussions = () => apiRequest<UnassignedDiscussion[]>("/admin/discussions/unassigned", {}, true);
+export const apiAdminAutoAssignDiscussion = (id: string) => apiRequest(`/admin/discussions/${encodeURIComponent(id)}/auto-assign`, { method: "POST" }, true);
+export type AdminAppointment = AppointmentRecord & { member: { id: string; displayName: string | null; email: string } };
+export type AuditLogRecord = { id: string; action: string; entityType: string; entityId: string | null; metadata: Record<string, unknown>; createdAt: string; actor: { id: string; displayName: string | null; email: string; role: string } | null };
+export const apiAdminAppointments = () => apiRequest<AdminAppointment[]>("/admin/appointments", {}, true);
+export const apiAdminAuditLogs = () => apiRequest<AuditLogRecord[]>("/admin/audit-logs", {}, true);
+export type MyRating = { id: string; discussionId: string | null; appointmentId: string | null; score: number; moderationStatus: string; createdAt: string };
+export const apiMyRatings = () => apiRequest<MyRating[]>("/ratings/mine", {}, true);

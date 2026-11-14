@@ -72,6 +72,8 @@ model User {
   ratingsGiven       CounsellorRating[] @relation("RatingAuthor")
   auditEvents        AuditLog[] @relation("AuditActor")
   authTokens         AuthToken[]
+  activityRecords    ActivityRecord[]
+  notifications      UserNotification[]
 
   @@index([role, status])
   @@index([createdAt])
@@ -303,4 +305,80 @@ model AuditLog {
   @@index([actorId, createdAt])
   @@index([entityType, entityId, createdAt])
   @@index([action, createdAt])
+}
+
+
+model ActivityRecord {
+  id        String   @id @default(cuid())
+  userId    String
+  type      String   @db.VarChar(50)
+  payload   Json     @default("{}")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId, type, createdAt])
+}
+
+model UserNotification {
+  id        String   @id @default(cuid())
+  userId    String
+  title     String   @db.VarChar(180)
+  body      String   @db.VarChar(1000)
+  type      String   @default("GENERAL") @db.VarChar(40)
+  readAt    DateTime?
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId, readAt, createdAt])
+}
+
+
+model CounsellorInvitation {
+  id          String   @id @default(cuid())
+  email       String   @db.VarChar(320)
+  tokenHash   String   @unique @db.VarChar(64)
+  topicIds    Json     @default("[]")
+  invitedById String
+  expiresAt   DateTime
+  acceptedAt  DateTime?
+  createdAt   DateTime @default(now())
+  @@index([email, acceptedAt, expiresAt])
+}
+
+
+model Resource {
+  id          String   @id @default(cuid())
+  title       String   @db.VarChar(180)
+  category    String   @db.VarChar(100)
+  readTime    String   @default("5 min read") @db.VarChar(40)
+  description String   @db.VarChar(2000)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  @@index([isActive, createdAt])
+}
+
+model Scholarship {
+  id          String   @id @default(cuid())
+  title       String   @db.VarChar(180)
+  provider    String   @db.VarChar(180)
+  level       String   @db.VarChar(100)
+  deadline    DateTime
+  eligibility String   @db.VarChar(2000)
+  description String   @db.VarChar(2000)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  @@index([isActive, deadline])
+}
+
+model ServiceArea {
+  id        String   @id @default(cuid())
+  state     String   @db.VarChar(100)
+  lga       String   @db.VarChar(120)
+  lcda      String   @db.VarChar(120)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@unique([state, lga, lcda])
+  @@index([state, lga, isActive])
 }

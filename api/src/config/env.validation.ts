@@ -23,6 +23,10 @@ class EnvironmentVariables {
 
   @IsOptional()
   @IsString()
+  AUTH_COUNSELLOR_INVITATION_URL?: string;
+
+  @IsOptional()
+  @IsString()
   AUTH_ACTION_BASE_URL?: string;
 
   @IsOptional()
@@ -40,6 +44,10 @@ class EnvironmentVariables {
   @IsOptional()
   @IsString()
   SMTP_PASSWORD?: string;
+
+  @IsOptional()
+  @IsString()
+  BREVO_API_KEY?: string;
 
   @IsOptional()
   @IsString()
@@ -73,8 +81,8 @@ export function validateEnvironment(config: Record<string, unknown>): Record<str
   if (transformed.NODE_ENV !== 'test' && !transformed.DATABASE_URL) {
     throw new Error('DATABASE_URL is required outside the test environment');
   }
-  if (transformed.NODE_ENV === 'production' && (!config.SMTP_HOST || !config.SMTP_USER || !config.SMTP_PASSWORD || !config.EMAIL_FROM)) {
-    throw new Error('SMTP_HOST, SMTP_USER, SMTP_PASSWORD, and EMAIL_FROM are required in production');
+  if (transformed.NODE_ENV === 'production' && (!config.BREVO_API_KEY || !config.EMAIL_FROM)) {
+    throw new Error('BREVO_API_KEY and EMAIL_FROM are required in production');
   }
   return { ...config, PORT: transformed.PORT };
 }

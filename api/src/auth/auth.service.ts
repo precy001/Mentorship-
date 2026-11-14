@@ -51,6 +51,12 @@ export class AuthService {
     const existing = await this.prisma.user.findUnique({ where: { email }, select: { id: true } });
     if (existing) throw new ConflictException('An account with this email already exists.');
 
+    if (dto.stateOfResidence || dto.lga || dto.lcda) {
+      if (!dto.stateOfResidence?.trim() || !dto.lga?.trim() || !dto.lcda?.trim()) throw new BadRequestException('Choose a state, LGA and LCDA from the available service areas.');
+      const serviceArea = await this.prisma.serviceArea.findFirst({ where: { state: dto.stateOfResidence.trim(), lga: dto.lga.trim(), lcda: dto.lcda.trim(), isActive: true }, select: { id: true } });
+      if (!serviceArea) throw new BadRequestException('This registration area is currently unavailable. Choose an enabled LGA and LCDA.');
+    }
+
     const category = await this.prisma.membershipCategory.findFirst({ where: { id: dto.categoryId, isActive: true }, select: { id: true } });
     const subcategory = await this.prisma.membershipSubcategory.findFirst({ where: { id: dto.subcategoryId, categoryId: dto.categoryId, isActive: true }, select: { id: true } });
     if (!category || !subcategory) throw new BadRequestException('Choose a valid category and a matching subcategory.');

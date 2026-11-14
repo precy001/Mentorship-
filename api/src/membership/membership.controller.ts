@@ -5,6 +5,12 @@ import { PrismaService } from '../prisma/prisma.service';
 export class MembershipController {
   constructor(private readonly prisma: PrismaService) {}
 
+  @Get('locations')
+  async getLocations() {
+    const locations = await this.prisma.serviceArea.findMany({ where: { isActive: true }, orderBy: [{ state: 'asc' }, { lga: 'asc' }, { lcda: 'asc' }], select: { id: true, state: true, lga: true, lcda: true } });
+    return { locations };
+  }
+
   @Get('categories')
   async getCategories() {
     const categories = await this.prisma.membershipCategory.findMany({

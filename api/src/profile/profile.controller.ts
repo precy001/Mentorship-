@@ -1,10 +1,11 @@
 import {
-  BadRequestException, Controller, Post, UploadedFile, UseGuards, UseInterceptors,
+  BadRequestException, Body, Controller, Patch, Post, UploadedFile, UseGuards, UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser, type AuthenticatedUser } from '../auth/decorators/current-user.decorator';
 import { ProfileService } from './profile.service';
+import { UpdateCategoryDto } from './update-category.dto';
 
 type UploadedImage = { buffer: Buffer; mimetype: string; size: number };
 
@@ -12,6 +13,11 @@ type UploadedImage = { buffer: Buffer; mimetype: string; size: number };
 @UseGuards(JwtAuthGuard)
 export class ProfileController {
   constructor(private readonly profiles: ProfileService) {}
+
+  @Patch('membership')
+  updateMembership(@CurrentUser() user: AuthenticatedUser, @Body() dto: UpdateCategoryDto) {
+    return this.profiles.updateMembership(user.id, dto.categoryId, dto.subcategoryId);
+  }
 
   @Post('avatar')
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 5 * 1024 * 1024 } }))
