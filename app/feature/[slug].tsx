@@ -1,13 +1,31 @@
 import React, { useEffect, useState } from "react";
-import { Alert, Text, View, Pressable } from "react-native";
+import { Alert, Pressable, Text, View } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
-import { Screen, Heading, Card, Button, Field, Pill, Row } from "@/src/components/UI";
+import { Screen, Heading, Card, Button, Field, Pill, BackLink, SectionHeader, OptionCard, Chip, EmptyState, StarRating, IconBadge } from "@/src/components/UI";
+import type { IconName } from "@/src/components/UI";
 import { DatePickerField } from "@/src/components/Forms";
 import { ResourceCard, ScholarshipCard } from "@/src/components/ContentCards";
 import { toDateString } from "@/src/lib/validation";
+import { appointmentTone, formatDateTime, formatShortDate, formatTimeRange, humanize } from "@/src/lib/format";
 import { useApp } from "@/src/context/AppContext";
 import { colors } from "@/src/lib/theme";
 import { apiCreateActivity, apiListActivities, apiListNotifications, apiMarkNotificationRead, ActivityRecord, UserNotification, apiDiscussionTopics, apiListAppointments, apiCreateAppointment, apiUpdateAppointmentStatus, DiscussionTopic, AppointmentRecord, apiMyRatings, apiCreateRating, MyRating } from "@/src/lib/api";
+
+const MOODS: { value: string; icon: IconName }[] = [
+  { value: "Great", icon: "happy" },
+  { value: "Good", icon: "happy-outline" },
+  { value: "Okay", icon: "remove-circle-outline" },
+  { value: "Low", icon: "sad-outline" },
+  { value: "Stressed", icon: "thunderstorm-outline" },
+];
+const TIME_SLOTS = [{ label: "10:00 AM", value: "10:00" }, { label: "1:00 PM", value: "13:00" }, { label: "3:30 PM", value: "15:30" }];
+const QUESTIONS: { question: string; options: string[] }[] = [
+  { question: "Which activity sounds most interesting?", options: ["Building or fixing things", "Helping people", "Analysing information"] },
+  { question: "Which strength sounds most like you?", options: ["Practical problem-solving", "Listening and explaining", "Logic and patterns"] },
+  { question: "What kind of problem would you enjoy solving?", options: ["Engineering challenge", "Community challenge", "Data or research challenge"] },
+];
+const KNOWN = ["ai", "booking", "assessment", "wellness", "goals", "notifications", "history", "discussion", "saved", "resources", "career", "business", "universities", "help"];
 
 export default function FeatureScreen() {
   const { slug: raw } = useLocalSearchParams<{ slug: string }>(); const slug = String(raw || "resources");
@@ -42,80 +60,170 @@ export default function FeatureScreen() {
       setSelectedTopicId(current => availableTopics.some(item => item.id === current) ? current : availableTopics[0]?.id || "");
     }).catch(error => Alert.alert("Appointments unavailable", error instanceof Error ? error.message : "Please try again."));
   }, [slug]);
-  const goBack = () => router.back();
   const titleMap: Record<string, string> = { ai: "Automated support", booking: "Appointments", assessment: "Career assessment", wellness: "Wellbeing check-in", goals: "Personal goals", notifications: "Notifications", history: "Activity history", discussion: "Private discussion", saved: "Saved items", resources: "Resources library", career: "Career growth", business: "Business guidance", universities: "Universities", help: "Help & support" };
   const title = titleMap[slug] || "Mentorship+";
+
+  const requestAppointment = async () => {
+    const [year, month, day] = date.split("-").map(Number);
+    const start = new Date(year, month - 1, day, Number(time.slice(0, 2)), Number(time.slice(3, 5)), 0, 0);
+    const calendarDateValid = /^\d{4}-\d{2}-\d{2}$/.test(date) && start.getFullYear() === year && start.getMonth() === month - 1 && start.getDate() === day;
+    const end = new Date(start.getTime() + 45 * 60 * 1000);
+    if (!calendarDateValid || !Number.isFinite(start.getTime()) || start <= new Date()) return Alert.alert("Choose a valid time", "Appointments must be requested for a real future date and time.");
+    try { setSaving(true); await apiCreateAppointment({ topicId: selectedTopicId, startsAt: start.toISOString(), endsAt: end.toISOString(), notes: note.trim() || undefined }); setNote(""); const items = await apiListAppointments(); setAppointments(items); await app.refreshAccountData(); Alert.alert("Appointment requested", "Your request has been sent. It will appear as requested until the counsellor confirms it."); }
+    catch (error) { Alert.alert("Appointment not requested", error instanceof Error ? error.message : "Please choose another time."); }
+    finally { setSaving(false); }
+  };
+
+  const cancelAppointment = (item: AppointmentRecord) => Alert.alert("Cancel appointment?", "This will cancel your appointment request.", [{ text: "Keep", style: "cancel" }, { text: "Cancel appointment", style: "destructive", onPress: async () => { try { await apiUpdateAppointmentStatus(item.id, "CANCELLED"); setAppointments(await apiListAppointments()); await app.refreshAccountData(); } catch (error) { Alert.alert("Could not cancel", error instanceof Error ? error.message : "Please try again."); } } }]);
+
+  const saveAssessment = async () => {
+    const result = answers.some(item => /people|listening|community|helping/i.test(item)) ? "people-focused paths" : answers.some(item => /analysing|logic|data|research/i.test(item)) ? "analytical and research paths" : "practical and technical paths";
+    try { setSaving(true); await apiCreateActivity("CAREER_ASSESSMENT", { answers, result }); await refreshActivities(); Alert.alert("Assessment saved", `Your responses suggest exploring ${result}. This is a reflection tool, not a validated assessment.`); } catch (error) { Alert.alert("Could not save assessment", error instanceof Error ? error.message : "Please try again."); } finally { setSaving(false); }
+  };
+
+  const saveCheckin = async () => { try { setSaving(true); await apiCreateActivity("WELLBEING_CHECKIN", { mood, note }); setNote(""); await refreshActivities(); Alert.alert("Check-in saved", "Your private entry is saved to your account and is not included in general admin analytics."); } catch (error) { Alert.alert("Could not save check-in", error instanceof Error ? error.message : "Please try again."); } finally { setSaving(false); } };
+
+  const addGoal = async () => { if (!goal.trim()) return Alert.alert("Add a goal", "Enter a short goal first."); try { setSaving(true); await app.addGoal(goal.trim()); setGoal(""); await refreshActivities(); } catch (error) { Alert.alert("Could not save goal", error instanceof Error ? error.message : "Please try again."); } finally { setSaving(false); } };
+
+  const contentList = app.resources.filter(resource => slug === "resources" || resource.category.toLowerCase().includes(slug));
+  const goals = records.filter(record => record.type === "PERSONAL_GOAL");
+  const checkins = records.filter(record => record.type === "WELLBEING_CHECKIN");
+  const hasAssessment = records.some(record => record.type === "CAREER_ASSESSMENT");
+
   return <Screen>
-    <Pressable onPress={goBack}><Text style={{ color: colors.primary, fontWeight: "800", paddingVertical: 4 }}>← Back</Text></Pressable>
+    <BackLink />
     <Heading title={title} subtitle={slug === "ai" ? "Automated guidance is not a substitute for a qualified human counsellor." : undefined} />
-    {slug === "ai" && <Card><Text style={{ color: colors.ink, fontWeight: "800", fontSize: 17 }}>Automated counselling is not available yet.</Text><Text style={{ color: colors.muted, lineHeight: 21 }}>We do not provide simulated AI conversations. You can start a private discussion with a human counsellor or request an appointment.</Text><Button title="Talk to a human counsellor" onPress={() => router.push("/(student)/counselling")} /></Card>}
+
+    {slug === "ai" && <EmptyState icon="chatbubbles-outline" title="Automated counselling is not available yet" message="We do not provide simulated AI conversations. You can start a private discussion with a human counsellor or request an appointment." actionLabel="Talk to a human counsellor" onAction={() => router.push("/(student)/counselling")} />}
+
     {slug === "booking" && <>
-      <Card><Heading title="Request a counselling session" small subtitle="Select a topic and a future time. A suitable counsellor will be assigned based on topic and availability." />
-        {bookingTopics.map(item => <Pressable key={item.id} onPress={() => { setSelectedTopicId(item.id);  }} style={{ borderWidth: 1, borderColor: selectedTopicId === item.id ? colors.primary : colors.line, backgroundColor: selectedTopicId === item.id ? colors.softBlue : "#fff", borderRadius: 12, padding: 12, gap: 4 }}><Text style={{ color: colors.ink, fontWeight: "800" }}>{item.name}</Text>{item.description ? <Text style={{ color: colors.muted, fontSize: 12 }}>{item.description}</Text> : null}</Pressable>)}
-        <DatePickerField label="Appointment date" value={date} onChange={setDate} minDate={toDateString(new Date())} maxDate={`${new Date().getFullYear() + 2}-12-31`} required /><Text style={{ color: colors.ink, fontWeight: "700" }}>Start time</Text><View style={{ flexDirection: "row", gap: 8 }}>{[{label:"10:00 AM",value:"10:00"},{label:"1:00 PM",value:"13:00"},{label:"3:30 PM",value:"15:30"}].map(t => <Pressable key={t.value} onPress={() => setTime(t.value)} style={{ flex: 1, padding: 10, borderRadius: 10, backgroundColor: time === t.value ? colors.primary : colors.softBlue, alignItems: "center" }}><Text style={{ color: time === t.value ? "#fff" : colors.ink, fontWeight: "700", fontSize: 11 }}>{t.label}</Text></Pressable>)}</View>
-        <Field label="Optional note" value={note} onChangeText={setNote} placeholder="Anything the counsellor should know?" multiline />
-        <Button title={saving ? "Requesting…" : "Request appointment"} disabled={saving || !selectedTopicId} onPress={async () => {
-          const [year, month, day] = date.split("-").map(Number);
-          const start = new Date(year, month - 1, day, Number(time.slice(0, 2)), Number(time.slice(3, 5)), 0, 0);
-          const calendarDateValid = /^\d{4}-\d{2}-\d{2}$/.test(date) && start.getFullYear() === year && start.getMonth() === month - 1 && start.getDate() === day;
-          const end = new Date(start.getTime() + 45 * 60 * 1000);
-          if (!calendarDateValid || !Number.isFinite(start.getTime()) || start <= new Date()) return Alert.alert("Choose a valid time", "Appointments must be requested for a real future date and time.");
-          try { setSaving(true); await apiCreateAppointment({ topicId: selectedTopicId, startsAt: start.toISOString(), endsAt: end.toISOString(), notes: note.trim() || undefined }); setNote(""); const items = await apiListAppointments(); setAppointments(items); await app.refreshAccountData(); Alert.alert("Appointment requested", "Your request has been sent. It will appear as requested until the counsellor confirms it."); }
-          catch (error) { Alert.alert("Appointment not requested", error instanceof Error ? error.message : "Please choose another time."); }
-          finally { setSaving(false); }
-        }} />
+      <Card style={{ gap: 14 }}>
+        <Heading title="Request a counselling session" small subtitle="Select a topic and a future time. A suitable counsellor will be assigned based on topic and availability." />
+        <Text style={{ color: colors.ink, fontWeight: "700", fontSize: 13 }}>Topic</Text>
+        <View accessibilityRole="radiogroup" style={{ gap: 8 }}>
+          {bookingTopics.map(item => <OptionCard key={item.id} title={item.name} description={item.description} selected={selectedTopicId === item.id} onPress={() => setSelectedTopicId(item.id)} />)}
+          {!bookingTopics.length ? <Text style={{ color: colors.muted }}>No counselling topics are currently available.</Text> : null}
+        </View>
+        <DatePickerField label="Appointment date" value={date} onChange={setDate} minDate={toDateString(new Date())} maxDate={`${new Date().getFullYear() + 2}-12-31`} required />
+        <Text style={{ color: colors.ink, fontWeight: "700", fontSize: 13 }}>Start time</Text>
+        <View accessibilityRole="radiogroup" style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>{TIME_SLOTS.map(t => <Chip key={t.value} label={t.label} accessibilityRole="radio" selected={time === t.value} onPress={() => setTime(t.value)} />)}</View>
+        <Field label="Note for your counsellor" optional value={note} onChangeText={setNote} placeholder="Anything the counsellor should know?" multiline maxLength={2000} editable={!saving} />
+        <Button title={saving ? "Requesting…" : "Request appointment"} loading={saving} disabled={!selectedTopicId} onPress={() => void requestAppointment()} />
       </Card>
-      <Heading title="Your appointments" small />
-      {appointments.length ? appointments.map(item => <Card key={item.id}><Row style={{ justifyContent: "space-between" }}><Text style={{ color: colors.ink, fontWeight: "800" }}>{item.topic?.name || "Counselling"}</Text><Pill label={item.status.replaceAll("_", " ")} tone={item.status === "CONFIRMED" ? "green" : item.status === "CANCELLED" ? "red" : "amber"} /></Row><Text style={{ color: colors.muted }}>{new Date(item.startsAt).toLocaleString()} – {new Date(item.endsAt).toLocaleTimeString()}</Text><Text style={{ color: colors.muted, fontSize: 12 }}>Counsellor: {item.counsellor.user.displayName || "Assigned counsellor"}</Text>{["REQUESTED", "CONFIRMED", "RESCHEDULED"].includes(item.status) ? <Button title="Cancel appointment" variant="ghost" onPress={() => Alert.alert("Cancel appointment?", "This will cancel your appointment request.", [{ text: "Keep", style: "cancel" }, { text: "Cancel appointment", style: "destructive", onPress: async () => { try { await apiUpdateAppointmentStatus(item.id, "CANCELLED"); setAppointments(await apiListAppointments()); await app.refreshAccountData(); } catch (error) { Alert.alert("Could not cancel", error instanceof Error ? error.message : "Please try again."); } } }])} /> : null}</Card>) : <Card><Text style={{ color: colors.muted }}>No appointments yet. Request a session above.</Text></Card>}
+      <SectionHeader title="Your appointments" />
+      {appointments.length ? appointments.map(item => <Card key={item.id}>
+        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
+          <Text style={{ color: colors.ink, fontWeight: "800", fontSize: 16, flex: 1 }}>{item.topic?.name || "Counselling"}</Text>
+          <Pill label={humanize(item.status)} tone={appointmentTone(item.status)} />
+        </View>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}><Ionicons name="calendar-outline" size={16} color={colors.muted} /><Text style={{ color: colors.ink, flex: 1 }}>{formatTimeRange(item.startsAt, item.endsAt)}</Text></View>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}><Ionicons name="person-outline" size={16} color={colors.muted} /><Text style={{ color: colors.muted, fontSize: 13, flex: 1 }}>{item.counsellor.user.displayName || "Assigned counsellor"}</Text></View>
+        {["REQUESTED", "CONFIRMED", "RESCHEDULED"].includes(item.status) ? <Button title="Cancel appointment" variant="dangerSoft" size="sm" onPress={() => cancelAppointment(item)} /> : null}
+      </Card>) : <EmptyState icon="calendar-outline" title="No appointments yet" message="Request a session above and it will appear here." />}
     </>}
-    {slug === "assessment" && <>
-      <Card><Pill label="CAREER EXPLORATION" tone="purple" /><Text style={{ color: colors.ink, fontWeight: "800", fontSize: 18 }}>{records.some(record => record.type === "CAREER_ASSESSMENT") ? "Explore your career interests" : "A few questions about you"}</Text><Text style={{ color: colors.muted, lineHeight: 21 }}>Answer three reflection questions to explore possible career interests. This is not a validated psychological assessment.</Text>
-      {["Which activity sounds most interesting?", "Which strength sounds most like you?", "What kind of problem would you enjoy solving?"].map((question, i) => <View key={question} style={{ gap: 8, marginTop: 8 }}><Text style={{ color: colors.ink, fontWeight: "800" }}>{i + 1}. {question}</Text>{(i === 0 ? ["Building or fixing things", "Helping people", "Analysing information"] : i === 1 ? ["Practical problem-solving", "Listening and explaining", "Logic and patterns"] : ["Engineering challenge", "Community challenge", "Data or research challenge"]).map(opt => <Pressable key={opt} onPress={() => setAnswers(current => { const next = [...current]; next[i] = opt; return next; })} style={{ padding: 11, borderRadius: 11, backgroundColor: answers[i] === opt ? colors.softBlue : "#fff", borderWidth: 1, borderColor: answers[i] === opt ? colors.primary : colors.line }}><Text style={{ color: colors.ink }}>{opt}</Text></Pressable>)}</View>)}
-      <Button title={saving ? "Saving…" : "Save assessment result"} disabled={saving || answers.length !== 3 || answers.some(item => !item)} onPress={async () => { const result = answers.some(item => /people|listening|community|helping/i.test(item)) ? "people-focused paths" : answers.some(item => /analysing|logic|data|research/i.test(item)) ? "analytical and research paths" : "practical and technical paths"; try { setSaving(true); await apiCreateActivity("CAREER_ASSESSMENT", { answers, result }); await refreshActivities(); Alert.alert("Assessment saved", `Your responses suggest exploring ${result}. This is a reflection tool, not a validated assessment.`); } catch (error) { Alert.alert("Could not save assessment", error instanceof Error ? error.message : "Please try again."); } finally { setSaving(false); } }} />
-      {records.some(record => record.type === "CAREER_ASSESSMENT") && <Pill label="Result saved to your account" tone="green" />}
-      </Card>
-    </>}
-    {slug === "wellness" && <>
-      <Card><Text style={{ color: colors.ink, fontWeight: "800", fontSize: 18 }}>How are you feeling today?</Text><Text style={{ color: colors.muted }}>There is no right or wrong answer.</Text><View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>{["Great", "Good", "Okay", "Low", "Stressed"].map(m => <Pressable key={m} onPress={() => setMood(m)} style={{ padding: 12, borderRadius: 12, backgroundColor: mood === m ? colors.softTeal : "#fff", borderWidth: 1, borderColor: mood === m ? colors.teal : colors.line }}><Text style={{ color: colors.ink, fontWeight: "700" }}>{m}</Text></Pressable>)}</View><Field label="Optional private journal note" value={note} onChangeText={setNote} placeholder="Anything you want to reflect on…" multiline /><Button title={saving ? "Saving…" : "Save check-in"} disabled={saving} onPress={async () => { try { setSaving(true); await apiCreateActivity("WELLBEING_CHECKIN", { mood, note }); setNote(""); await refreshActivities(); Alert.alert("Check-in saved", "Your private entry is saved to your account and is not included in general admin analytics."); } catch (error) { Alert.alert("Could not save check-in", error instanceof Error ? error.message : "Please try again."); } finally { setSaving(false); } }} /></Card>
-      <Heading title="Recent check-ins" small />{records.filter(record => record.type === "WELLBEING_CHECKIN").map(record => <Card key={record.id}><Row style={{ justifyContent: "space-between" }}><Text style={{ color: colors.ink, fontWeight: "800" }}>{String(record.payload.mood || "Check-in")}</Text><Text style={{ color: colors.muted, fontSize: 12 }}>{new Date(record.createdAt).toLocaleDateString()}</Text></Row>{typeof record.payload.note === "string" && record.payload.note ? <Text style={{ color: colors.muted }}>{record.payload.note}</Text> : null}</Card>)}
-    </>}
-    {slug === "goals" && <>
-      <Card><Field label="Add a personal goal" value={goal} onChangeText={setGoal} placeholder="e.g. Revise biology for 20 minutes" /><Button title={saving ? "Saving…" : "Add goal"} disabled={saving} onPress={async () => { if (!goal.trim()) return Alert.alert("Add a goal", "Enter a short goal first."); try { setSaving(true); await app.addGoal(goal.trim()); setGoal(""); await refreshActivities(); } catch (error) { Alert.alert("Could not save goal", error instanceof Error ? error.message : "Please try again."); } finally { setSaving(false); } }} /></Card>
-      {records.filter(record => record.type === "PERSONAL_GOAL").map(record => { const done = record.payload.done === true; return <Pressable key={record.id} onPress={async () => { try { await app.toggleGoal(record.id); await refreshActivities(); } catch (error) { Alert.alert("Goal not updated", error instanceof Error ? error.message : "Please try again."); } }}><Card><Row><Text style={{ fontSize: 20 }}>{done ? "☑" : "○"}</Text><Text style={{ color: colors.ink, flex: 1, fontWeight: "700", textDecorationLine: done ? "line-through" : "none" }}>{String(record.payload.title || "Personal goal")}</Text><Pill label={done ? "Done" : "In progress"} tone={done ? "green" : "blue"} /></Row></Card></Pressable>; })}
-    </>}
-    {slug === "notifications" && <>
-      {remoteNotifications.map(n => <Pressable key={n.id} onPress={async () => { if (n.readAt) return; try { await apiMarkNotificationRead(n.id); await refreshActivities(); await app.refreshAccountData(); } catch (error) { Alert.alert("Notification not updated", error instanceof Error ? error.message : "Please try again."); } }}><Card style={{ borderColor: n.readAt ? colors.line : "#B7D7E8" }}><Row style={{ justifyContent: "space-between" }}><Text style={{ color: colors.ink, fontWeight: "800", flex: 1 }}>{n.title}</Text>{!n.readAt && <Pill label="New" tone="green" />}</Row><Text style={{ color: colors.muted, lineHeight: 20 }}>{n.body}</Text><Text style={{ color: colors.primary, fontSize: 12, fontWeight: "700" }}>{n.readAt ? "Read" : "Tap to mark as read"}</Text></Card></Pressable>)}
-      {!remoteNotifications.length && <Card><Text style={{ color: colors.muted }}>You have no notifications yet.</Text></Card>}
-    </>}
-    {slug === "history" && <>
-      <Heading title="Your saved activities" small />
-      {records.map(record => <Card key={record.id}><Row style={{ justifyContent: "space-between" }}><Text style={{ color: colors.ink, fontWeight: "800" }}>{record.type.replaceAll("_", " ")}</Text><Text style={{ color: colors.muted, fontSize: 11 }}>{new Date(record.createdAt).toLocaleDateString()}</Text></Row><Text style={{ color: colors.muted }}>{record.type === "PERSONAL_GOAL" ? String(record.payload.title || "Personal goal") : record.type === "WELLBEING_CHECKIN" ? `Mood: ${String(record.payload.mood || "—")}` : `Result: ${String(record.payload.result || "Saved")}`}</Text></Card>)}
-      <Heading title="Appointment history" small />
-      {appointments.map(item => { const submitted = myRatings.find(rating => rating.appointmentId === item.id); return <Card key={item.id}><Row style={{ justifyContent: "space-between" }}><Text style={{ color: colors.ink, fontWeight: "800" }}>{item.topic?.name || "Counselling"}</Text><Pill label={item.status.replaceAll("_", " ")} tone={item.status === "COMPLETED" ? "green" : item.status === "CANCELLED" || item.status === "NO_SHOW" ? "red" : "amber"} /></Row><Text style={{ color: colors.muted }}>{new Date(item.startsAt).toLocaleString()}</Text>{item.status === "COMPLETED" && (submitted ? <Text style={{ color: colors.primary, fontWeight: "700" }}>Rating submitted · {submitted.score}/5 · {submitted.moderationStatus.toLowerCase()}</Text> : <><View style={{ flexDirection: "row", gap: 10 }}>{[1,2,3,4,5].map(score => <Text key={score} onPress={() => setAppointmentScores(current => ({ ...current, [item.id]: score }))} style={{ fontSize: 25, color: score <= (appointmentScores[item.id] || 0) ? colors.primary : colors.mutedLight }}>★</Text>)}</View><Button title="Submit appointment rating" disabled={!appointmentScores[item.id]} onPress={async () => { try { await apiCreateRating({ appointmentId: item.id, score: appointmentScores[item.id] }); setMyRatings(await apiMyRatings()); Alert.alert("Rating submitted", "Thank you. Your feedback is pending moderation."); } catch (error) { Alert.alert("Rating not submitted", error instanceof Error ? error.message : "Please try again."); } }} /></>)}</Card>; })}
-      {!records.length && !appointments.length ? <Card><Text style={{ color: colors.muted }}>Your completed activities and appointments will appear here.</Text></Card> : null}
-    </>}
-    {slug === "discussion" && <Card><Text style={{ color: colors.ink, fontWeight: "800" }}>Private discussions have moved to Counselling.</Text><Button title="Open counselling" onPress={() => router.push("/(student)/counselling")} /></Card>}
-    {slug === "saved" && <>
-      <Heading title="Saved resources" small />{app.resources.filter(r => app.savedResources.includes(r.id)).map(r => <ResourceCard key={r.id} item={r} saved onToggleSave={() => app.toggleResource(r.id)} />)}
-      <Heading title="Saved scholarships" small />{app.scholarships.filter(sch => app.savedScholarships.includes(sch.id)).map(sch => <ScholarshipCard key={sch.id} item={sch} saved onToggleSave={() => app.toggleScholarship(sch.id)} />)}
-      {!app.savedResources.length && !app.savedScholarships.length && <Card><Text style={{ color: colors.muted }}>You have not saved anything yet. Open Explore and tap Save on an item.</Text></Card>}
-    </>}
-    {(slug === "resources" || slug === "career" || slug === "business") && <>
-      {app.resources.filter(resource => slug === "resources" || resource.category.toLowerCase().includes(slug)).map(r => <ResourceCard key={r.id} item={r} saved={app.savedResources.includes(r.id)} onToggleSave={() => app.toggleResource(r.id)} />)}
-      {!app.resources.some(resource => slug === "resources" || resource.category.toLowerCase().includes(slug)) && <Card><Text style={{ color: colors.muted }}>No resources have been published in this section yet. Check back after administrators publish relevant content.</Text></Card>}
-    </>}
-    {slug === "universities" && <Card>
-      <Heading title="University directory" small />
-      <Text style={{ color: colors.muted, lineHeight: 21 }}>A verified university directory has not been connected to this account yet. We are not displaying sample institutions or unverified admission information here.</Text>
+
+    {slug === "assessment" && <Card style={{ gap: 16 }}>
+      <View style={{ flexDirection: "row", gap: 12, alignItems: "center" }}>
+        <IconBadge icon="compass-outline" size={44} />
+        <View style={{ flex: 1 }}><Text style={{ color: colors.ink, fontWeight: "800", fontSize: 17 }}>{hasAssessment ? "Explore your career interests" : "A few questions about you"}</Text></View>
+      </View>
+      <Text style={{ color: colors.muted, lineHeight: 21 }}>Answer three reflection questions to explore possible career interests. This is not a validated psychological assessment.</Text>
+      {QUESTIONS.map((q, i) => <View key={q.question} style={{ gap: 8 }}>
+        <Text style={{ color: colors.ink, fontWeight: "800", fontSize: 15 }}>{i + 1}. {q.question}</Text>
+        <View accessibilityRole="radiogroup" style={{ gap: 8 }}>
+          {q.options.map(opt => <OptionCard key={opt} title={opt} selected={answers[i] === opt} onPress={() => setAnswers(current => { const next = [...current]; next[i] = opt; return next; })} />)}
+        </View>
+      </View>)}
+      <Button title={saving ? "Saving…" : "Save assessment result"} loading={saving} disabled={answers.length !== 3 || answers.some(item => !item)} onPress={() => void saveAssessment()} />
+      {hasAssessment && <Pill label="Result saved to your account" tone="green" />}
     </Card>}
+
+    {slug === "wellness" && <>
+      <Card style={{ gap: 14 }}>
+        <Heading title="How are you feeling today?" small subtitle="There is no right or wrong answer." />
+        <View accessibilityRole="radiogroup" style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>{MOODS.map(m => <Chip key={m.value} label={m.value} icon={m.icon} accessibilityRole="radio" selected={mood === m.value} onPress={() => setMood(m.value)} />)}</View>
+        <Field label="Private journal note" optional value={note} onChangeText={setNote} placeholder="Anything you want to reflect on…" multiline editable={!saving} />
+        <Button title={saving ? "Saving…" : "Save check-in"} loading={saving} onPress={() => void saveCheckin()} />
+      </Card>
+      <SectionHeader title="Recent check-ins" />
+      {checkins.map(record => <Card key={record.id}>
+        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}><Text style={{ color: colors.ink, fontWeight: "800" }}>{String(record.payload.mood || "Check-in")}</Text><Text style={{ color: colors.muted, fontSize: 12 }}>{formatShortDate(record.createdAt)}</Text></View>
+        {typeof record.payload.note === "string" && record.payload.note ? <Text style={{ color: colors.muted, lineHeight: 20 }}>{record.payload.note}</Text> : null}
+      </Card>)}
+      {!checkins.length ? <EmptyState icon="heart-outline" title="No check-ins yet" message="Your private check-ins will appear here." /> : null}
+    </>}
+
+    {slug === "goals" && <>
+      <Card>
+        <Field label="Add a personal goal" value={goal} onChangeText={setGoal} placeholder="e.g. Revise biology for 20 minutes" returnKeyType="done" onSubmitEditing={() => void addGoal()} editable={!saving} />
+        <Button title={saving ? "Saving…" : "Add goal"} icon="add" loading={saving} onPress={() => void addGoal()} />
+      </Card>
+      {goals.map(record => { const done = record.payload.done === true; const label = String(record.payload.title || "Personal goal"); return <Pressable key={record.id} accessibilityRole="checkbox" accessibilityState={{ checked: done }} accessibilityLabel={label} onPress={async () => { try { await app.toggleGoal(record.id); await refreshActivities(); } catch (error) { Alert.alert("Goal not updated", error instanceof Error ? error.message : "Please try again."); } }}>
+        <Card style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+          <Ionicons name={done ? "checkmark-circle" : "ellipse-outline"} size={26} color={done ? colors.primary : colors.mutedLight} />
+          <Text style={{ color: done ? colors.muted : colors.ink, flex: 1, fontWeight: "700", fontSize: 15, textDecorationLine: done ? "line-through" : "none" }}>{label}</Text>
+          <Pill label={done ? "Done" : "In progress"} tone={done ? "green" : "blue"} />
+        </Card>
+      </Pressable>; })}
+      {!goals.length ? <EmptyState icon="checkmark-done-outline" title="No goals yet" message="Add one small thing you’d like to do this week." /> : null}
+    </>}
+
+    {slug === "notifications" && <>
+      {remoteNotifications.map(n => <Pressable key={n.id} accessibilityRole="button" accessibilityLabel={`${n.title}. ${n.readAt ? "Read" : "Unread, tap to mark as read"}`} onPress={async () => { if (n.readAt) return; try { await apiMarkNotificationRead(n.id); await refreshActivities(); await app.refreshAccountData(); } catch (error) { Alert.alert("Notification not updated", error instanceof Error ? error.message : "Please try again."); } }}>
+        <Card style={{ borderColor: n.readAt ? colors.cardBorder : colors.primary, borderWidth: n.readAt ? 1 : 1.5, backgroundColor: n.readAt ? colors.surface : colors.brandSurface }}>
+          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 10 }}><Text style={{ color: colors.ink, fontWeight: "800", flex: 1, fontSize: 15 }}>{n.title}</Text>{!n.readAt && <Pill label="New" tone="green" />}</View>
+          <Text style={{ color: colors.muted, lineHeight: 20 }}>{n.body}</Text>
+          {!n.readAt ? <Text style={{ color: colors.primary, fontSize: 12, fontWeight: "700" }}>Tap to mark as read</Text> : null}
+        </Card>
+      </Pressable>)}
+      {!remoteNotifications.length && <EmptyState icon="notifications-outline" title="You’re all caught up" message="You have no notifications yet." />}
+    </>}
+
+    {slug === "history" && <>
+      <SectionHeader title="Your saved activities" />
+      {records.map(record => <Card key={record.id}>
+        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}><Text style={{ color: colors.ink, fontWeight: "800" }}>{humanize(record.type)}</Text><Text style={{ color: colors.muted, fontSize: 12 }}>{formatShortDate(record.createdAt)}</Text></View>
+        <Text style={{ color: colors.muted, lineHeight: 20 }}>{record.type === "PERSONAL_GOAL" ? String(record.payload.title || "Personal goal") : record.type === "WELLBEING_CHECKIN" ? `Mood: ${String(record.payload.mood || "—")}` : `Result: ${String(record.payload.result || "Saved")}`}</Text>
+      </Card>)}
+      <SectionHeader title="Appointment history" />
+      {appointments.map(item => { const submitted = myRatings.find(rating => rating.appointmentId === item.id); return <Card key={item.id}>
+        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}><Text style={{ color: colors.ink, fontWeight: "800", flex: 1 }}>{item.topic?.name || "Counselling"}</Text><Pill label={humanize(item.status)} tone={appointmentTone(item.status)} /></View>
+        <Text style={{ color: colors.muted }}>{formatDateTime(item.startsAt)}</Text>
+        {item.status === "COMPLETED" && (submitted ? <Text style={{ color: colors.primary, fontWeight: "700" }}>Rating submitted · {submitted.score}/5 · {submitted.moderationStatus.toLowerCase()}</Text> : <>
+          <Text style={{ color: colors.ink, fontWeight: "700", fontSize: 13 }}>How was this session?</Text>
+          <StarRating value={appointmentScores[item.id] || 0} onChange={score => setAppointmentScores(current => ({ ...current, [item.id]: score }))} label="Rate this appointment" />
+          <Button title="Submit appointment rating" size="sm" disabled={!appointmentScores[item.id]} onPress={async () => { try { await apiCreateRating({ appointmentId: item.id, score: appointmentScores[item.id] }); setMyRatings(await apiMyRatings()); Alert.alert("Rating submitted", "Thank you. Your feedback is pending moderation."); } catch (error) { Alert.alert("Rating not submitted", error instanceof Error ? error.message : "Please try again."); } }} />
+        </>)}
+      </Card>; })}
+      {!records.length && !appointments.length ? <EmptyState icon="time-outline" title="Nothing here yet" message="Your completed activities and appointments will appear here." /> : null}
+    </>}
+
+    {slug === "discussion" && <EmptyState icon="chatbubble-ellipses-outline" title="Private discussions have moved to Counselling" actionLabel="Open counselling" onAction={() => router.push("/(student)/counselling")} />}
+
+    {slug === "saved" && <>
+      <SectionHeader title="Saved resources" />
+      {app.resources.filter(r => app.savedResources.includes(r.id)).map(r => <ResourceCard key={r.id} item={r} saved onToggleSave={() => app.toggleResource(r.id)} />)}
+      <SectionHeader title="Saved scholarships" />
+      {app.scholarships.filter(sch => app.savedScholarships.includes(sch.id)).map(sch => <ScholarshipCard key={sch.id} item={sch} saved onToggleSave={() => app.toggleScholarship(sch.id)} />)}
+      {!app.savedResources.length && !app.savedScholarships.length && <EmptyState icon="heart-outline" title="Nothing saved yet" message="Open Explore and tap the heart on an item to save it." actionLabel="Go to Explore" onAction={() => router.push("/(student)/explore")} />}
+    </>}
+
+    {(slug === "resources" || slug === "career" || slug === "business") && <>
+      {contentList.map(r => <ResourceCard key={r.id} item={r} saved={app.savedResources.includes(r.id)} onToggleSave={() => app.toggleResource(r.id)} />)}
+      {!contentList.length && <EmptyState icon="book-outline" title="Nothing published here yet" message="Check back after administrators publish relevant content." />}
+    </>}
+
+    {slug === "universities" && <EmptyState icon="school-outline" title="University directory" message="A verified university directory has not been connected to this account yet. We are not displaying sample institutions or unverified admission information here." />}
+
     {slug === "help" && <>
       {[
         ["Is NIN verification available?", "No. NIN verification is not connected to an authorised verification provider, and the app does not claim that your NIN has been verified."],
         ["Are scholarships verified?", "Opportunities are published by Mentorship+ administrators. Confirm eligibility and deadlines directly with the provider before applying."],
         ["Can counsellors see my journal?", "Your private wellbeing entries are tied to your account and are not included in general administrator analytics or counsellor discussion access."],
         ["Is automated AI counselling available?", "No. This build does not simulate AI conversations. You can contact a human counsellor through the counselling feature."]
-      ].map(([q, a]) => <Card key={q}><Text style={{ color: colors.ink, fontWeight: "800" }}>{q}</Text><Text style={{ color: colors.muted, lineHeight: 21 }}>{a}</Text></Card>)}
+      ].map(([q, a]) => <Card key={q} style={{ gap: 6 }}><Text accessibilityRole="header" style={{ color: colors.ink, fontWeight: "800", fontSize: 15 }}>{q}</Text><Text style={{ color: colors.muted, lineHeight: 21 }}>{a}</Text></Card>)}
     </>}
-    {!["ai", "booking", "assessment", "wellness", "goals", "notifications", "history", "discussion", "saved", "resources", "career", "business", "universities", "help"].includes(slug) && <Card><Text style={{ color: colors.ink, fontWeight: "800" }}>This area is part of the Mentorship+ MVP.</Text><Text style={{ color: colors.muted }}>Use the main navigation to explore available features.</Text></Card>}
+
+    {!KNOWN.includes(slug) && <EmptyState icon="construct-outline" title="This area is part of the Mentorship+ MVP" message="Use the main navigation to explore available features." />}
   </Screen>;
 }

@@ -1,8 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Alert, Text, TextInput, View } from "react-native";
+import { Alert, View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
-import { Screen, Button, Card } from "@/src/components/UI";
-import { colors } from "@/src/lib/theme";
+import { Screen, Heading, Button, Card, Field, BackLink, IconBadge } from "@/src/components/UI";
 import { apiResendVerification, apiVerifyEmail } from "@/src/lib/api";
 
 export default function VerifyEmailScreen() {
@@ -73,23 +72,44 @@ export default function VerifyEmailScreen() {
   };
 
   return (
-    <Screen style={{ justifyContent: "center", gap: 16 }}>
-      <Text onPress={() => router.back()} style={{ color: colors.primary, fontWeight: "700" }}>‹  Back</Text>
-      <View style={{ gap: 8 }}>
-        <Text style={{ color: colors.primary, fontSize: 11, fontWeight: "800", letterSpacing: 1.4 }}>ACCOUNT SECURITY</Text>
-        <Text style={{ color: colors.ink, fontSize: 28, fontWeight: "800" }}>Verify your email</Text>
-        <Text style={{ color: colors.muted, lineHeight: 22 }}>Confirm your email address to activate your Mentorship+ account. Open the link we sent you. If the link does not open the app, paste the token from the link below.</Text>
+    <Screen>
+      <BackLink />
+      <View style={{ gap: 16 }}>
+        <IconBadge icon="mail-open-outline" size={52} />
+        <Heading title="Verify your email" subtitle="Confirm your email address to activate your Mentorship+ account. Open the link we sent you, or paste its token below if the link doesn’t open the app." />
+        <Card>
+          <Field
+            label="Verification token"
+            icon="key-outline"
+            value={token}
+            onChangeText={setToken}
+            autoCapitalize="none"
+            autoCorrect={false}
+            placeholder="Paste verification token"
+            multiline
+            editable={!busy}
+          />
+          <Button title={busy ? "Please wait…" : "Verify email address"} loading={busy} onPress={() => void verify()} />
+        </Card>
+        <Card>
+          <Heading title="Didn’t receive the email?" small subtitle="Check your spam folder, or request a new link." />
+          <Field
+            label="Registration email"
+            icon="mail-outline"
+            value={email}
+            onChangeText={setEmail}
+            keyboardType="email-address"
+            autoCapitalize="none"
+            autoCorrect={false}
+            autoComplete="email"
+            placeholder="name@example.com"
+            returnKeyType="send"
+            onSubmitEditing={() => void resend()}
+            editable={!busy}
+          />
+          <Button title={busy ? "Please wait…" : "Resend verification link"} variant="secondary" disabled={busy} onPress={() => void resend()} />
+        </Card>
       </View>
-      <Card style={{ gap: 12 }}>
-        <Text style={{ color: colors.ink, fontWeight: "800" }}>Verification token</Text>
-        <TextInput value={token} onChangeText={setToken} autoCapitalize="none" autoCorrect={false} placeholder="Paste verification token" placeholderTextColor="#8B95A3" multiline style={{ minHeight: 90, textAlignVertical: "top", backgroundColor: "#F3F5F8", borderRadius: 14, padding: 14, color: colors.ink }} />
-        <Button title={busy ? "Please wait…" : "Verify email address"} onPress={verify} disabled={busy} />
-      </Card>
-      <Card style={{ gap: 10 }}>
-        <Text style={{ color: colors.ink, fontWeight: "800" }}>Didn't receive the email?</Text>
-        <TextInput value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" placeholder="Your registration email" placeholderTextColor="#8B95A3" style={{ backgroundColor: "#F3F5F8", borderRadius: 14, padding: 15, color: colors.ink }} />
-        <Button title={busy ? "Please wait…" : "Resend verification link"} variant="secondary" onPress={resend} disabled={busy} />
-      </Card>
     </Screen>
   );
 }

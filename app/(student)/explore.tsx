@@ -1,10 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Pressable, ScrollView, Text, TextInput, View } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
+import { ScrollView, Text } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
-import { Screen, Heading, Card, Button } from "@/src/components/UI";
+import { Screen, Heading, Button, Chip, Segmented, SearchField, LoadingBlock, ErrorState, EmptyState } from "@/src/components/UI";
 import { ResourceCard, ScholarshipCard } from "@/src/components/ContentCards";
 import { colors } from "@/src/lib/theme";
+import { pluralize } from "@/src/lib/format";
 import { useApp } from "@/src/context/AppContext";
 import { apiGetPublicResources, apiGetPublicScholarships, PublicResource, PublicScholarship } from "@/src/lib/api";
 
@@ -31,6 +31,8 @@ export default function Explore() {
 
   useEffect(() => { void load(); }, [load]);
   useEffect(() => { setFilter("All"); }, [tab]);
+  // Follow the tab requested by a deep link such as "See all scholarships" while this screen is already mounted.
+  useEffect(() => { if (params.tab === "scholarships" || params.tab === "resources") setTab(params.tab); }, [params.tab]);
 
   const filters = useMemo(
     () => ["All", ...Array.from(new Set((tab === "resources" ? resources.map((i) => i.category) : scholarships.map((i) => i.level))))],
@@ -40,52 +42,33 @@ export default function Explore() {
   const visibleResources = resources.filter((i) => (filter === "All" || i.category === filter) && matches(`${i.title} ${i.category} ${i.description}`));
   const visibleScholarships = scholarships.filter((i) => (filter === "All" || i.level === filter) && matches(`${i.title} ${i.provider} ${i.level} ${i.description}`));
   const count = tab === "resources" ? visibleResources.length : visibleScholarships.length;
+  const savedCount = app.savedResources.length + app.savedScholarships.length;
+  const filtering = !!query.trim() || filter !== "All";
 
   return (
-    <Screen>
+    <Screen tabBar onRefresh={load} refreshing={loading && (resources.length > 0 || scholarships.length > 0)}>
       <Heading title="Explore your possibilities" subtitle="Learning resources and funding opportunities published by Mentorship+ administrators." />
 
-      <View style={{ flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: "#fff", borderWidth: 1, borderColor: colors.line, borderRadius: 14, paddingHorizontal: 14 }}>
-        <Ionicons name="search-outline" size={18} color={colors.muted} />
-        <TextInput
-          value={query}
-          onChangeText={setQuery}
-          placeholder="Search resources, scholarships…"
-          placeholderTextColor="#9AA5B5"
-          accessibilityLabel="Search resources and scholarships"
-          returnKeyType="search"
-          autoCorrect={false}
-          style={{ flex: 1, paddingVertical: 14, color: colors.ink }}
-        />
-        {query ? <Pressable accessibilityRole="button" accessibilityLabel="Clear search" hitSlop={10} onPress={() => setQuery("")}><Ionicons name="close-circle" size={18} color={colors.mutedLight} /></Pressable> : null}
-      </View>
+      <SearchField value={query} onChangeText={setQuery} placeholder="Search resources, scholarships…" accessibilityLabel="Search resources and scholarships" />
 
-      <View style={{ flexDirection: "row", gap: 8 }}>
-        {(["resources", "scholarships"] as const).map((t) => (
-          <Pressable key={t} accessibilityRole="tab" accessibilityState={{ selected: tab === t }} onPress={() => setTab(t)} style={{ flex: 1, paddingVertical: 11, borderRadius: 12, backgroundColor: tab === t ? colors.primary : "#fff", borderWidth: 1, borderColor: tab === t ? colors.primary : colors.line, alignItems: "center" }}>
-            <Text style={{ color: tab === t ? "#fff" : colors.ink, fontWeight: "700", fontSize: 12, textTransform: "capitalize" }}>{t}</Text>
-          </Pressable>
-        ))}
-      </View>
+      <Segmented
+        value={tab}
+        onChange={setTab}
+        options={[{ label: `Resources${resources.length ? ` (${resources.length})` : ""}`, value: "resources" }, { label: `Scholarships${scholarships.length ? ` (${scholarships.length})` : ""}`, value: "scholarships" }]}
+      />
 
       {filters.length > 2 ? (
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
-          {filters.map((name) => (
-            <Pressable key={name} accessibilityRole="button" accessibilityState={{ selected: filter === name }} onPress={() => setFilter(name)} style={{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999, backgroundColor: filter === name ? colors.accentTint : colors.surface, borderWidth: 1, borderColor: filter === name ? colors.primary : colors.line }}>
-              <Text style={{ color: filter === name ? colors.primaryDark : colors.muted, fontWeight: "700", fontSize: 12 }}>{name}</Text>
-            </Pressable>
-          ))}
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingHorizontal: 22 }} style={{ flexGrow: 0, marginHorizontal: -22 }}>
+          {filters.map((name) => <Chip key={name} label={name} selected={filter === name} onPress={() => setFilter(name)} />)}
         </ScrollView>
       ) : null}
 
-      {loading ? <ActivityIndicator color={colors.primary} /> : null}
+      {loading && !resources.length && !scholarships.length ? <LoadingBlock label="Loading opportunities…" /> : null}
 
-      {loadError ? (
-        <Card>
-          <Text style={{ color: colors.error, fontWeight: "700" }}>Content could not be loaded</Text>
-          <Text style={{ color: colors.muted }}>{loadError}</Text>
-          <Button title="Try again" variant="secondary" loading={loading} onPress={() => void load()} />
-        </Card>
+      {loadError ? <ErrorState title="Content could not be loaded" message={loadError} retrying={loading} onRetry={() => void load()} /> : null}
+
+      {!loading && !loadError && count > 0 && filtering ? (
+        <Text accessibilityLiveRegion="polite" style={{ color: colors.muted, fontSize: 13 }}>{pluralize(count, "result")}</Text>
       ) : null}
 
       {tab === "resources"
@@ -93,17 +76,21 @@ export default function Explore() {
         : visibleScholarships.map((item) => <ScholarshipCard key={item.id} item={item} saved={app.savedScholarships.includes(item.id)} onToggleSave={() => app.toggleScholarship(item.id)} />)}
 
       {!loading && count === 0 && !loadError ? (
-        <Card>
-          <Text style={{ color: colors.ink, fontWeight: "800" }}>Nothing found</Text>
-          <Text style={{ color: colors.muted }}>
-            {query || filter !== "All" ? "No items match your search or filter. Try something broader." : `No published ${tab} are available yet. Check back soon.`}
-          </Text>
-        </Card>
+        <EmptyState
+          icon={filtering ? "search-outline" : tab === "resources" ? "book-outline" : "school-outline"}
+          title={filtering ? "Nothing matches yet" : "Nothing here yet"}
+          message={filtering ? "No items match your search or filter. Try something broader." : `No published ${tab} are available yet. Check back soon.`}
+          actionLabel={filtering ? "Clear search and filters" : undefined}
+          onAction={filtering ? () => { setQuery(""); setFilter("All"); } : undefined}
+        />
       ) : null}
 
-      <Pressable accessibilityRole="button" onPress={() => router.push({ pathname: "/feature/[slug]", params: { slug: "saved" } })}>
-        <Text style={{ color: colors.primary, fontWeight: "800", textAlign: "center", padding: 10 }}>View saved resources and scholarships →</Text>
-      </Pressable>
+      <Button
+        title={savedCount ? `Saved items (${savedCount})` : "Saved items"}
+        icon="heart-outline"
+        variant="secondary"
+        onPress={() => router.push({ pathname: "/feature/[slug]", params: { slug: "saved" } })}
+      />
     </Screen>
   );
 }

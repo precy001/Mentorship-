@@ -81,7 +81,7 @@ export function SelectField({
         onPress={() => setOpen(true)}
         style={[styles.control, !!error && styles.controlError, disabled && { opacity: 0.55 }]}
       >
-        <Text numberOfLines={1} style={[styles.controlText, !selected && { color: colors.mutedLight }]}>
+        <Text numberOfLines={1} style={[styles.controlText, !selected && { color: colors.placeholder }]}>
           {selected ? selected.label : placeholder}
         </Text>
         <Ionicons name="chevron-down" size={18} color={colors.muted} />
@@ -162,12 +162,18 @@ export function DatePickerField({
   helper,
   placeholder = "Select a date",
   disabled,
+  defaultView,
+  descendingYears = false,
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
   minDate?: string;
   maxDate?: string;
+  /** YYYY-MM-DD the calendar opens on when no date is chosen yet (for example 18 years ago for a date of birth). */
+  defaultView?: string;
+  /** Lists the year picker newest first, which is quicker for dates of birth. */
+  descendingYears?: boolean;
   required?: boolean;
   optional?: boolean;
   error?: string | null;
@@ -176,13 +182,13 @@ export function DatePickerField({
   disabled?: boolean;
 }) {
   const [open, setOpen] = useState(false);
-  const [view, setView] = useState(() => startOfMonth(parseDateString(value) ?? parseDateString(minDate ?? "") ?? new Date()));
+  const [view, setView] = useState(() => startOfMonth(parseDateString(value) ?? parseDateString(defaultView ?? "") ?? parseDateString(minDate ?? "") ?? new Date()));
   const [pickingYear, setPickingYear] = useState(false);
   const today = toDateString(new Date());
 
   useEffect(() => {
     if (open) {
-      setView(startOfMonth(parseDateString(value) ?? parseDateString(minDate ?? "") ?? new Date()));
+      setView(startOfMonth(parseDateString(value) ?? parseDateString(defaultView ?? "") ?? parseDateString(minDate ?? "") ?? new Date()));
       setPickingYear(false);
     }
     // Re-anchor the calendar only when it is opened.
@@ -191,7 +197,10 @@ export function DatePickerField({
 
   const firstYear = parseDateString(minDate ?? "")?.getFullYear() ?? new Date().getFullYear() - 100;
   const lastYear = parseDateString(maxDate ?? "")?.getFullYear() ?? new Date().getFullYear() + 10;
-  const years = useMemo(() => Array.from({ length: Math.max(lastYear - firstYear + 1, 1) }, (_, i) => firstYear + i), [firstYear, lastYear]);
+  const years = useMemo(() => {
+    const list = Array.from({ length: Math.max(lastYear - firstYear + 1, 1) }, (_, i) => firstYear + i);
+    return descendingYears ? list.reverse() : list;
+  }, [firstYear, lastYear, descendingYears]);
 
   const cells = useMemo(() => {
     const offset = (new Date(view.getFullYear(), view.getMonth(), 1).getDay() + 6) % 7;
@@ -216,7 +225,7 @@ export function DatePickerField({
         onPress={() => setOpen(true)}
         style={[styles.control, !!error && styles.controlError, disabled && { opacity: 0.55 }]}
       >
-        <Text style={[styles.controlText, !value && { color: colors.mutedLight }]}>{value ? formatDisplayDate(value) : placeholder}</Text>
+        <Text style={[styles.controlText, !value && { color: colors.placeholder }]}>{value ? formatDisplayDate(value) : placeholder}</Text>
         <Ionicons name="calendar-outline" size={19} color={colors.muted} />
       </Pressable>
       <FieldMessage error={error} helper={helper} />
@@ -279,7 +288,7 @@ export function DatePickerField({
                         style={styles.dayCell}
                       >
                         <View style={[styles.dayBubble, selected && { backgroundColor: colors.primary }, !selected && date === today && { borderWidth: 1, borderColor: colors.primary }]}>
-                          <Text style={{ color: selected ? colors.white : disabledDay ? colors.line : colors.ink, fontWeight: selected ? "800" : "600" }}>{day}</Text>
+                          <Text style={{ color: selected ? colors.white : disabledDay ? "#C3CCD8" : colors.ink, fontWeight: selected ? "800" : "600" }}>{day}</Text>
                         </View>
                       </Pressable>
                     );
@@ -502,17 +511,17 @@ const styles = StyleSheet.create({
   option: { minHeight: 50, paddingHorizontal: 14, borderRadius: 14, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 },
   optionText: { fontSize: 15, color: colors.ink, flexShrink: 1 },
   sheetActions: { flexDirection: "row", justifyContent: "flex-end", gap: 8, marginTop: 4 },
-  sheetButton: { paddingHorizontal: 16, paddingVertical: 11, borderRadius: 12, backgroundColor: colors.surfaceSecondary },
+  sheetButton: { minHeight: 44, justifyContent: "center", paddingHorizontal: 18, borderRadius: 12, backgroundColor: colors.surfaceSecondary },
   sheetButtonText: { color: colors.ink, fontWeight: "700" },
   calendar: { backgroundColor: colors.surface, borderRadius: 24, padding: 20, gap: 10, borderWidth: 1, borderColor: "#E5E7EB" },
   monthRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginVertical: 4 },
   monthLabel: { fontSize: 16, fontWeight: "800", color: colors.ink },
-  navButton: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center" },
+  navButton: { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center" },
   weekday: { width: "14.28%", textAlign: "center", color: colors.muted, fontSize: 12, fontWeight: "700" },
   dayCell: { width: "14.28%", height: 42, alignItems: "center", justifyContent: "center" },
   dayBubble: { width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center" },
   yearGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8, paddingVertical: 8 },
-  yearCell: { width: "22%", paddingVertical: 10, borderRadius: 12, alignItems: "center", backgroundColor: colors.surfaceSecondary },
+  yearCell: { width: "22%", minHeight: 44, justifyContent: "center", paddingVertical: 10, borderRadius: 12, alignItems: "center", backgroundColor: colors.surfaceSecondary },
   dropzone: { minHeight: 112, borderRadius: 18, borderWidth: 1.5, borderStyle: "dashed", borderColor: "#C9D1FF", backgroundColor: "#F6F7FF", alignItems: "center", justifyContent: "center", gap: 8, padding: 16 },
   imageButton: { flex: 1, minHeight: 44, borderRadius: 14, borderWidth: 1, borderColor: "#DCE1FF", backgroundColor: "#F6F7FF", flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6 },
   imageButtonText: { color: colors.primaryDark, fontWeight: "800", fontSize: 13 },

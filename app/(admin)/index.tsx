@@ -1,7 +1,9 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Alert, LayoutChangeEvent, Pressable, ScrollView, Text, View } from "react-native";
+import { Alert, LayoutChangeEvent, Pressable, ScrollView, Text, View } from "react-native";
 import { router } from "expo-router";
-import { Screen, Heading, Card, Button, Field, Pill, Row } from "@/src/components/UI";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Screen, Card, Button, Field, Pill, Row, SectionHeader, StatTile, Chip, EmptyState, Avatar, LoadingBlock, IconBadge } from "@/src/components/UI";
+import type { IconName } from "@/src/components/UI";
 import { DatePickerField, ImageUploadField, SelectField, SmartImage, Toast } from "@/src/components/Forms";
 import { colors } from "@/src/lib/theme";
 import { useApp } from "@/src/context/AppContext";
@@ -24,6 +26,7 @@ import {
 } from "@/src/lib/validation";
 
 type FormErrors = Record<string, string | null>;
+type AdminSection = "overview" | "accounts" | "counselling" | "resources" | "scholarships" | "platform";
 type Success = { title: string; message: string; toast?: boolean };
 const emptyResource = { title: "", category: "", minutes: "5", description: "" };
 const emptyScholarship = { title: "", provider: "", level: "", deadline: "", eligibility: "", description: "" };
@@ -32,6 +35,8 @@ export default function AdminDashboard() {
   const app = useApp();
   const scrollRef = useRef<ScrollView>(null);
   const { toast, show: showToast, hide: hideToast } = useToast();
+  const insets = useSafeAreaInsets();
+  const [section, setSection] = useState<AdminSection>("overview");
 
   const [stats, setStats] = useState<AdminDashboardStats | null>(null);
   const [users, setUsers] = useState<AdminUser[]>([]);
@@ -97,11 +102,7 @@ export default function AdminDashboard() {
         onPress={() => setExpandedSections((current) => ({ ...current, [section]: !current[section] }))}
       />
     ) : null;
-  const emptyCard = (text: string) => (
-    <Card style={adminCardStyle}>
-      <Text style={{ color: colors.muted, lineHeight: 20 }}>{text}</Text>
-    </Card>
-  );
+  const emptyCard = (text: string) => <EmptyState icon="file-tray-outline" title={text} />;
 
   /* ---------------------------------------------------------------- access control */
   useEffect(() => {
@@ -373,10 +374,10 @@ export default function AdminDashboard() {
   const categoryOptions = toOptions(RESOURCE_CATEGORIES);
   const levelOptions = toOptions(SCHOLARSHIP_LEVELS);
   const activeTopics = topics.filter((topic) => topic.isActive);
-  const h = (title: string, subtitle: string) => <Heading title={title} small subtitle={subtitle} />;
+  const h = (title: string, subtitle: string) => <SectionHeader title={title} subtitle={subtitle} />;
   const title = (text: string, sub: string) => (
     <>
-      <Text style={{ color: colors.ink, fontSize: 15, fontWeight: "800" }}>{text}</Text>
+      <Text accessibilityRole="header" style={{ color: colors.ink, fontSize: 16, fontWeight: "800" }}>{text}</Text>
       <Text style={{ color: colors.muted, fontSize: 12, lineHeight: 18 }}>{sub}</Text>
     </>
   );
@@ -391,44 +392,78 @@ export default function AdminDashboard() {
     </Row>
   );
 
-  if (app.sessionLoading || !isAdminRole) return <Screen><ActivityIndicator color={colors.primary} /></Screen>;
+  const switchSection = (next: AdminSection) => {
+    setSection(next);
+    scrollRef.current?.scrollTo({ y: 0, animated: false });
+  };
+  const attention = pendingRatings.length + unassignedDiscussions.length;
+  const sections: { key: AdminSection; label: string; count?: number }[] = [
+    { key: "overview", label: "Overview" },
+    { key: "accounts", label: "Accounts" },
+    { key: "counselling", label: "Counselling", count: attention },
+    { key: "resources", label: "Resources" },
+    { key: "scholarships", label: "Scholarships" },
+    { key: "platform", label: "Platform" },
+  ];
+  const statTiles: { label: string; value: number; icon: IconName; tone?: "brand" | "green" | "amber" | "red" | "neutral"; highlight?: boolean }[] = stats ? [
+    { label: "Total accounts", value: stats.users, icon: "people-outline" },
+    { label: "Active members", value: stats.members, icon: "person-outline" },
+    { label: "Counsellors", value: stats.counsellors, icon: "chatbubbles-outline" },
+    { label: "Administrators", value: stats.admins, icon: "shield-checkmark-outline" },
+    { label: "Active topics", value: stats.topics, icon: "pricetags-outline" },
+    { label: "Open discussions", value: stats.openDiscussions, icon: "chatbubble-ellipses-outline" },
+    { label: "Upcoming appointments", value: stats.appointments, icon: "calendar-outline" },
+    { label: "Ratings to review", value: stats.pendingRatings, icon: "star-half-outline", tone: "amber", highlight: stats.pendingRatings > 0 },
+    { label: "Published resources", value: stats.resources, icon: "book-outline" },
+    { label: "Published scholarships", value: stats.scholarships, icon: "school-outline" },
+  ] : [];
+
+  if (app.sessionLoading || !isAdminRole) return <Screen><LoadingBlock label="Opening administration…" /></Screen>;
 
   return (
-    <View style={{ flex: 1 }}>
-      <Screen scrollRef={scrollRef}>
-        <View style={{ flexDirection: "row", justifyContent: "flex-end" }}>
-          <Pressable accessibilityRole="button" accessibilityLabel="Sign out" onPress={signOut} style={{ paddingHorizontal: 14, paddingVertical: 9, borderRadius: 999, borderWidth: 1, borderColor: "#E5EBEF", backgroundColor: "#FFFFFF" }}>
-            <Text style={{ color: colors.ink, fontWeight: "700", fontSize: 12 }}>Sign out  ↗</Text>
-          </Pressable>
+    <View style={{ flex: 1, backgroundColor: colors.bg }}>
+      <View style={{ paddingTop: insets.top + 10, backgroundColor: colors.bg, borderBottomWidth: 1, borderBottomColor: colors.line }}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 22, paddingBottom: 12 }}>
+          <IconBadge icon="shield-checkmark-outline" size={44} />
+          <View style={{ flex: 1 }}>
+            <Text accessibilityRole="header" style={{ color: colors.ink, fontSize: 20, fontWeight: "800", letterSpacing: -0.4 }}>{isSuperAdmin ? "Super Admin dashboard" : "Admin dashboard"}</Text>
+            <Text numberOfLines={1} style={{ color: colors.muted, fontSize: 13 }}>{app.user?.name || "Administrator"}</Text>
+          </View>
+          <Button title="Sign out" variant="ghost" size="sm" icon="log-out-outline" onPress={signOut} />
         </View>
-        <Heading title={isSuperAdmin ? "Super Admin dashboard" : "Admin dashboard"} subtitle={`Platform administration · ${app.user?.name || "Administrator"}`} />
-        <Card style={{ backgroundColor: colors.primary, borderColor: colors.primary, borderRadius: 24, padding: 20 }}>
-          <Text style={{ color: "#B8F2E8", fontWeight: "800", fontSize: 11, letterSpacing: 1.2 }}>MENTORSHIP+  /  ADMINISTRATION</Text>
-          <Text style={{ color: "#fff", fontWeight: "900", fontSize: 25, letterSpacing: -0.5 }}>Platform operations</Text>
-          <Text style={{ color: "#E1EDF5", fontSize: 13, lineHeight: 20 }}>Changes are saved to the Mentorship+ server. Access is controlled by your administrator role.</Text>
-        </Card>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingHorizontal: 22, paddingBottom: 12 }}>
+          {sections.map((item) => <Chip key={item.key} label={item.label} count={item.count} accessibilityRole="tab" selected={section === item.key} onPress={() => switchSection(item.key)} />)}
+        </ScrollView>
+      </View>
 
+      <Screen scrollRef={scrollRef} safeTop={false} onRefresh={refresh} refreshing={loading && !!stats}>
         {loadErrors.length ? (
           <Card style={{ ...adminCardStyle, borderColor: "#F3B5B5", backgroundColor: colors.errorBg }}>
             <Text style={{ color: colors.error, fontWeight: "800" }}>Some administration data could not load</Text>
             {loadErrors.map((line) => <Text key={line} style={{ color: colors.error, fontSize: 12, lineHeight: 18 }}>{line}</Text>)}
-            <Button title="Retry" variant="secondary" loading={loading} onPress={() => void refresh()} />
+            <Button title="Retry" variant="secondary" size="sm" loading={loading} onPress={() => void refresh()} />
           </Card>
         ) : null}
-        {loading && !stats ? <ActivityIndicator color={colors.primary} /> : null}
+        {loading && !stats ? <LoadingBlock label="Loading platform data…" /> : null}
 
-        <Heading title="Platform overview" small subtitle="A live snapshot of accounts, counselling activity and published content." />
-        {stats ? (
-          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
-            {([["Total accounts", stats.users], ["Active members", stats.members], ["Counsellors", stats.counsellors], ["Administrators", stats.admins], ["Active topics", stats.topics], ["Open discussions", stats.openDiscussions], ["Upcoming appointments", stats.appointments], ["Ratings to review", stats.pendingRatings], ["Published resources", stats.resources], ["Published scholarships", stats.scholarships]] as [string, number][]).map(([label, value]) => (
-              <Card key={label} style={{ ...adminCardStyle, width: "47%", flexGrow: 1, minHeight: 94 }}>
-                <Text style={{ color: colors.muted, fontSize: 12 }}>{label}</Text>
-                <Text style={{ color: colors.ink, fontSize: 25, fontWeight: "900" }}>{value}</Text>
-              </Card>
-            ))}
-          </View>
-        ) : null}
+        {section === "overview" ? <>
+          {h("Platform overview", "A live snapshot of accounts, counselling activity and published content.")}
+          {stats ? (
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 12 }}>
+              {statTiles.map((tile) => <StatTile key={tile.label} label={tile.label} value={tile.value} icon={tile.icon} tone={tile.tone} highlight={tile.highlight} />)}
+            </View>
+          ) : null}
+          {stats ? (
+            <Card style={adminCardStyle}>
+              {title(attention ? "Needs your attention" : "Nothing needs attention", attention ? "These items are waiting on an administrator." : "There are no pending ratings or unassigned discussions.")}
+              {pendingRatings.length ? <Row style={{ justifyContent: "space-between" }}><Text style={{ color: colors.ink, flex: 1 }}>{pendingRatings.length} {pendingRatings.length === 1 ? "rating" : "ratings"} awaiting moderation</Text><Button size="sm" title="Review" variant="secondary" onPress={() => switchSection("counselling")} /></Row> : null}
+              {unassignedDiscussions.length ? <Row style={{ justifyContent: "space-between" }}><Text style={{ color: colors.ink, flex: 1 }}>{unassignedDiscussions.length} {unassignedDiscussions.length === 1 ? "discussion" : "discussions"} awaiting a counsellor</Text><Button size="sm" title="Assign" variant="secondary" onPress={() => switchSection("counselling")} /></Row> : null}
+            </Card>
+          ) : null}
+          <Button title="Refresh platform data" icon="refresh" variant="secondary" loading={loading} disabled={anyBusy} onPress={() => void refresh()} />
+        </> : null}
 
+        {section === "accounts" ? <>
         {/* ------------------------------------------------ accounts */}
         {h("Account management", `Search accounts and manage access · ${users.length} accounts. Super Admin privileges are required to appoint administrators.`)}
         <Card style={adminCardStyle}>
@@ -442,9 +477,14 @@ export default function AdminDashboard() {
           const canManage = user.id !== app.user?.id && (isSuperAdmin || (user.role !== "ADMIN" && user.role !== "SUPER_ADMIN"));
           return (
             <Card key={user.id} style={adminCardStyle}>
-              <View style={{ gap: 4 }}>
-                <Text style={{ color: colors.ink, fontWeight: "800" }}>{user.displayName || "Unnamed account"}</Text>
-                <Text style={{ color: colors.muted, fontSize: 12 }}>{user.email}</Text>
+              <Row style={{ alignItems: "center", gap: 12 }}>
+                <Avatar name={user.displayName || user.email} size={44} />
+                <View style={{ flex: 1, gap: 2 }}>
+                  <Text style={{ color: colors.ink, fontWeight: "800", fontSize: 16 }}>{user.displayName || "Unnamed account"}</Text>
+                  <Text style={{ color: colors.muted, fontSize: 13 }}>{user.email}</Text>
+                </View>
+              </Row>
+              <View style={{ gap: 8 }}>
                 <Row style={{ gap: 6, flexWrap: "wrap" }}>
                   <Pill label={user.role} tone={user.role === "ADMIN" || user.role === "SUPER_ADMIN" ? "green" : "blue"} />
                   <Pill label={user.status} tone={user.status === "ACTIVE" ? "green" : "red"} />
@@ -453,21 +493,21 @@ export default function AdminDashboard() {
                 {user.role === "COUNSELLOR" && user.counsellorProfile ? <Text style={{ color: colors.muted, fontSize: 12 }}>Topics: {user.counsellorProfile.topics.map((t) => t.topic.name).join(", ") || "None assigned"}</Text> : null}
               </View>
               <Row style={{ flexWrap: "wrap", gap: 8 }}>
-                {user.role === "MEMBER" ? <Button title="Make counsellor" loading={isBusy(`role-${user.id}`)} disabled={anyBusy} onPress={() => void changeRole(user, "COUNSELLOR")} /> : null}
-                {user.role === "COUNSELLOR" ? <Button title="Remove counsellor role" variant="secondary" loading={isBusy(`role-${user.id}`)} disabled={anyBusy} onPress={() => void changeRole(user, "MEMBER")} /> : null}
-                {user.role === "COUNSELLOR" ? <Button title={user.counsellorProfile?.topics.length ? "Clear all topics" : "Assign all topics"} variant="secondary" loading={isBusy(`topics-${user.id}`)} disabled={anyBusy} onPress={() => void assignAllTopics(user)} /> : null}
-                {isSuperAdmin && user.role === "MEMBER" && user.id !== app.user?.id ? <Button title="Make admin" variant="secondary" loading={isBusy(`role-${user.id}`)} disabled={anyBusy} onPress={() => void changeRole(user, "ADMIN")} /> : null}
-                {isSuperAdmin && user.role === "ADMIN" ? <Button title="Revoke admin" variant="danger" loading={isBusy(`role-${user.id}`)} disabled={anyBusy} onPress={() => void changeRole(user, "MEMBER")} /> : null}
-                {canManage && user.status === "ACTIVE" ? <Button title="Suspend" variant="danger" loading={isBusy(`status-${user.id}`)} disabled={anyBusy} onPress={() => void setAccountStatus(user, "SUSPENDED")} /> : null}
-                {canManage && user.status === "ACTIVE" ? <Button title="Deactivate" variant="danger" loading={isBusy(`status-${user.id}`)} disabled={anyBusy} onPress={() => void setAccountStatus(user, "DEACTIVATED")} /> : null}
-                {canManage && user.status !== "ACTIVE" && user.emailVerifiedAt ? <Button title="Reactivate" variant="secondary" loading={isBusy(`status-${user.id}`)} disabled={anyBusy} onPress={() => void setAccountStatus(user, "ACTIVE")} /> : null}
+                {user.role === "MEMBER" ? <Button size="sm" title="Make counsellor" loading={isBusy(`role-${user.id}`)} disabled={anyBusy} onPress={() => void changeRole(user, "COUNSELLOR")} /> : null}
+                {user.role === "COUNSELLOR" ? <Button size="sm" title="Remove counsellor role" variant="secondary" loading={isBusy(`role-${user.id}`)} disabled={anyBusy} onPress={() => void changeRole(user, "MEMBER")} /> : null}
+                {user.role === "COUNSELLOR" ? <Button size="sm" title={user.counsellorProfile?.topics.length ? "Clear all topics" : "Assign all topics"} variant="secondary" loading={isBusy(`topics-${user.id}`)} disabled={anyBusy} onPress={() => void assignAllTopics(user)} /> : null}
+                {isSuperAdmin && user.role === "MEMBER" && user.id !== app.user?.id ? <Button size="sm" title="Make admin" variant="secondary" loading={isBusy(`role-${user.id}`)} disabled={anyBusy} onPress={() => void changeRole(user, "ADMIN")} /> : null}
+                {isSuperAdmin && user.role === "ADMIN" ? <Button size="sm" title="Revoke admin" variant="danger" loading={isBusy(`role-${user.id}`)} disabled={anyBusy} onPress={() => void changeRole(user, "MEMBER")} /> : null}
+                {canManage && user.status === "ACTIVE" ? <Button size="sm" title="Suspend" variant="dangerSoft" loading={isBusy(`status-${user.id}`)} disabled={anyBusy} onPress={() => void setAccountStatus(user, "SUSPENDED")} /> : null}
+                {canManage && user.status === "ACTIVE" ? <Button size="sm" title="Deactivate" variant="dangerSoft" loading={isBusy(`status-${user.id}`)} disabled={anyBusy} onPress={() => void setAccountStatus(user, "DEACTIVATED")} /> : null}
+                {canManage && user.status !== "ACTIVE" && user.emailVerifiedAt ? <Button size="sm" title="Reactivate" variant="secondary" loading={isBusy(`status-${user.id}`)} disabled={anyBusy} onPress={() => void setAccountStatus(user, "ACTIVE")} /> : null}
               </Row>
               {user.role === "COUNSELLOR" && user.counsellorProfile ? (
                 <View style={{ gap: 8 }}>
-                  <Text style={{ color: colors.ink, fontWeight: "700" }}>Availability · {user.counsellorProfile.availability}</Text>
+                  <Text style={{ color: colors.ink, fontWeight: "700" }}>Availability · {user.counsellorProfile.availability.replace("_", " ").toLowerCase()}</Text>
                   <Row style={{ flexWrap: "wrap", gap: 7 }}>
                     {(["AVAILABLE", "OFFLINE", "ON_LEAVE"] as const).map((value, index) => (
-                      <Button key={value} title={value === "ON_LEAVE" ? "On leave" : value === "OFFLINE" ? "Offline" : "Available"} variant={index === 0 ? "primary" : index === 1 ? "secondary" : "ghost"} loading={isBusy(`avail-${user.id}`) && user.counsellorProfile?.availability !== value} disabled={anyBusy || user.counsellorProfile?.availability === value} onPress={() => void setCounsellorAvailability(user, value)} />
+                      <Button size="sm" key={value} title={value === "ON_LEAVE" ? "On leave" : value === "OFFLINE" ? "Offline" : "Available"} variant={index === 0 ? "primary" : index === 1 ? "secondary" : "ghost"} loading={isBusy(`avail-${user.id}`) && user.counsellorProfile?.availability !== value} disabled={anyBusy || user.counsellorProfile?.availability === value} onPress={() => void setCounsellorAvailability(user, value)} />
                     ))}
                   </Row>
                   <Text style={{ color: colors.ink, fontWeight: "700" }}>Manage assigned topics</Text>
@@ -488,6 +528,7 @@ export default function AdminDashboard() {
         })}
         {renderSectionToggle("users", users.length)}
         {!users.length && !loading ? emptyCard(searchTerm.current ? `No accounts match “${searchTerm.current}”.` : "No accounts were found.") : null}
+
 
         {/* ------------------------------------------------ invitations */}
         {h("Invite a counsellor", "Send an invitation to an existing Mentorship+ account or a new registrant. The invitee must sign in with the invited email and accept the link.")}
@@ -511,23 +552,81 @@ export default function AdminDashboard() {
           <Button title={isBusy("invite") ? "Sending…" : "Send counsellor invitation"} loading={isBusy("invite")} disabled={anyBusy} onPress={() => void inviteCounsellor()} />
         </Card>
 
-        {/* ------------------------------------------------ service areas */}
-        {h("LGA / LCDA access management", `Control which Lagos service areas are available during registration · ${serviceAreas.length} areas.`)}
-        {visibleItems("serviceAreas", serviceAreas).map((area) => (
-          <Card key={area.id} style={adminCardStyle}>
+        </> : null}
+
+        {section === "counselling" ? <>
+        {/* ------------------------------------------------ appointments */}
+        {h("Appointment oversight", `Review appointment requests and their current status · ${appointments.length} records. Members and assigned counsellors manage changes.`)}
+        {visibleItems("appointments", appointments).map((item) => (
+          <Card key={item.id} style={adminCardStyle}>
             <Row style={{ justifyContent: "space-between" }}>
-              <View style={{ flex: 1, gap: 3 }}>
-                <Text style={{ color: colors.ink, fontWeight: "800" }}>{area.lga}</Text>
-                <Text style={{ color: colors.muted, fontSize: 12 }}>{area.lcda} · {area.state}</Text>
-              </View>
-              <Pill label={area.isActive ? "Available" : "Disabled"} tone={area.isActive ? "green" : "red"} />
+              <Text style={{ color: colors.ink, fontWeight: "800", flex: 1 }}>{item.member.displayName || item.member.email}</Text>
+              <Pill label={item.status.replaceAll("_", " ")} tone={item.status === "COMPLETED" ? "green" : item.status === "CANCELLED" || item.status === "NO_SHOW" ? "red" : "amber"} />
             </Row>
-            <Button title={area.isActive ? "Disable area" : "Enable area"} variant="secondary" loading={isBusy(`area-${area.id}`)} disabled={anyBusy} onPress={() => void toggleServiceArea(area)} />
+            <Text style={{ color: colors.muted, fontSize: 12 }}>{item.topic?.name || "Counselling"} · {item.counsellor.user.displayName || item.counsellor.user.email}</Text>
+            <Text style={{ color: colors.muted }}>{new Date(item.startsAt).toLocaleString()}</Text>
           </Card>
         ))}
-        {renderSectionToggle("serviceAreas", serviceAreas.length)}
-        {!serviceAreas.length && !loading ? emptyCard("No service areas are configured.") : null}
+        {renderSectionToggle("appointments", appointments.length)}
+        {!appointments.length && !loading ? emptyCard("No appointment records yet.") : null}
 
+
+        {/* ------------------------------------------------ discussions */}
+        {h("Unassigned counselling discussions", `Automatically assign open discussions to an available counsellor with the matching topic and lowest current load · ${unassignedDiscussions.length} awaiting assignment.`)}
+        {visibleItems("unassignedDiscussions", unassignedDiscussions).map((item) => (
+          <Card key={item.id} style={adminCardStyle}>
+            <Text style={{ color: colors.ink, fontWeight: "800" }}>{item.title}</Text>
+            <Text style={{ color: colors.muted, fontSize: 12 }}>{item.topic.name} · {item.creator.displayName || item.creator.email} · {item._count.messages} messages</Text>
+            <Button title="Auto-assign counsellor" loading={isBusy(`assign-${item.id}`)} disabled={anyBusy} onPress={() => void autoAssign(item)} />
+          </Card>
+        ))}
+        {renderSectionToggle("unassignedDiscussions", unassignedDiscussions.length)}
+        {!unassignedDiscussions.length && !loading ? emptyCard("There are no unassigned discussions.") : null}
+
+
+        {/* ------------------------------------------------ ratings */}
+        {h("Counsellor rating moderation", `Only approved ratings contribute to public counsellor averages · ${pendingRatings.length} awaiting review.`)}
+        {visibleItems("pendingRatings", pendingRatings).map((rating) => (
+          <Card key={rating.id} style={adminCardStyle}>
+            <Text style={{ color: colors.ink, fontWeight: "800" }}>{rating.score}/5 · {rating.counsellor.user.displayName || rating.counsellor.user.email}</Text>
+            <Text style={{ color: colors.muted, fontSize: 12 }}>From {rating.author.displayName || rating.author.email} · {rating.discussion?.title || "Appointment rating"}</Text>
+            {rating.feedback ? <Text style={{ color: colors.muted }}>{rating.feedback}</Text> : null}
+            <Row style={{ gap: 8 }}>
+              <Button size="sm" title="Approve" loading={isBusy(`rating-${rating.id}`)} disabled={anyBusy} onPress={() => void moderate(rating, "APPROVED")} />
+              <Button size="sm" title="Reject" variant="dangerSoft" disabled={anyBusy} onPress={() => void moderate(rating, "REJECTED")} />
+            </Row>
+          </Card>
+        ))}
+        {renderSectionToggle("pendingRatings", pendingRatings.length)}
+        {!pendingRatings.length && !loading ? emptyCard("No ratings are waiting for moderation.") : null}
+
+
+        {/* ------------------------------------------------ topics */}
+        {h("Counselling topic management", `Create topics and control whether members can select them · ${topics.length} topics.`)}
+        <Card style={adminCardStyle}>
+          {title("Create a counselling topic", "Topics help members find the right counselling support.")}
+          <Field label="Topic name" value={newTopic} onChangeText={(v) => { setNewTopic(v); if (topicErrors.name) setTopicErrors((e) => ({ ...e, name: null })); }} placeholder="e.g. Career development" required maxLength={120} error={topicErrors.name} editable={!anyBusy} />
+          <Field label="Description" value={description} onChangeText={setDescription} placeholder="What this topic covers" multiline optional maxLength={500} error={topicErrors.description} editable={!anyBusy} />
+          <Button title={isBusy("topic-create") ? "Saving…" : "Add topic"} loading={isBusy("topic-create")} disabled={anyBusy} onPress={() => void addTopic()} />
+        </Card>
+        {visibleItems("topics", topics).map((topic) => (
+          <Card key={topic.id} style={adminCardStyle}>
+            <Row style={{ justifyContent: "space-between" }}>
+              <View style={{ flex: 1, gap: 4 }}>
+                <Text style={{ color: colors.ink, fontWeight: "800" }}>{topic.name}</Text>
+                <Text style={{ color: colors.muted, fontSize: 12 }}>{topic.description || "No description"} · {topic._count.counsellors} counsellors · {topic._count.discussions} discussions</Text>
+              </View>
+              <Pill label={topic.isActive ? "Active" : "Inactive"} tone={topic.isActive ? "green" : "red"} />
+            </Row>
+            <Button size="sm" title={topic.isActive ? "Deactivate topic" : "Reactivate topic"} variant="secondary" loading={isBusy(`topic-${topic.id}`)} disabled={anyBusy} onPress={() => void toggleTopic(topic)} />
+          </Card>
+        ))}
+        {renderSectionToggle("topics", topics.length)}
+        {!topics.length && !loading ? emptyCard("No counselling topics yet. Create the first one above.") : null}
+
+        </> : null}
+
+        {section === "resources" ? <>
         {/* ------------------------------------------------ resources */}
         {h("Resource management", `Publish and manage learning resources shown in Explore · ${resources.length} resources.`)}
         <View onLayout={keepY(resourceFormY)}>
@@ -546,15 +645,18 @@ export default function AdminDashboard() {
           <Card key={item.id} style={adminCardStyle}>
             {itemHeader(item.title, `${item.category} · ${item.readTime}`, item.isActive, item.imageUrl, "Published", "Unpublished", "book-outline")}
             <Row style={{ flexWrap: "wrap", gap: 8 }}>
-              <Button title="Edit" variant="secondary" disabled={anyBusy} onPress={() => editResource(item)} />
-              <Button title={item.isActive ? "Unpublish" : "Publish"} variant="secondary" loading={isBusy(`resource-${item.id}`)} disabled={anyBusy} onPress={() => void toggleResource(item)} />
-              <Button title="Delete" variant="danger" loading={isBusy(`resource-del-${item.id}`)} disabled={anyBusy} onPress={() => void deleteResource(item)} />
+              <Button size="sm" title="Edit" variant="secondary" disabled={anyBusy} onPress={() => editResource(item)} />
+              <Button size="sm" title={item.isActive ? "Unpublish" : "Publish"} variant="secondary" loading={isBusy(`resource-${item.id}`)} disabled={anyBusy} onPress={() => void toggleResource(item)} />
+              <Button size="sm" title="Delete" variant="danger" loading={isBusy(`resource-del-${item.id}`)} disabled={anyBusy} onPress={() => void deleteResource(item)} />
             </Row>
           </Card>
         ))}
         {renderSectionToggle("resources", resources.length)}
         {!resources.length && !loading ? emptyCard("No resources yet. Use the form above to publish the first one.") : null}
 
+        </> : null}
+
+        {section === "scholarships" ? <>
         {/* ------------------------------------------------ scholarships */}
         {h("Scholarship management", `Publish verified opportunities and manage their visibility · ${scholarships.length} listings.`)}
         <View onLayout={keepY(scholarshipFormY)}>
@@ -575,80 +677,35 @@ export default function AdminDashboard() {
           <Card key={item.id} style={adminCardStyle}>
             {itemHeader(item.title, `${item.provider} · ${item.level} · Deadline ${formatDisplayDate(item.deadline)}`, item.isActive, item.imageUrl, "Published", "Unpublished", "school-outline")}
             <Row style={{ flexWrap: "wrap", gap: 8 }}>
-              <Button title="Edit" variant="secondary" disabled={anyBusy} onPress={() => editScholarship(item)} />
-              <Button title={item.isActive ? "Unpublish" : "Publish"} variant="secondary" loading={isBusy(`scholarship-${item.id}`)} disabled={anyBusy} onPress={() => void toggleScholarship(item)} />
-              <Button title="Delete" variant="danger" loading={isBusy(`scholarship-del-${item.id}`)} disabled={anyBusy} onPress={() => void deleteScholarship(item)} />
+              <Button size="sm" title="Edit" variant="secondary" disabled={anyBusy} onPress={() => editScholarship(item)} />
+              <Button size="sm" title={item.isActive ? "Unpublish" : "Publish"} variant="secondary" loading={isBusy(`scholarship-${item.id}`)} disabled={anyBusy} onPress={() => void toggleScholarship(item)} />
+              <Button size="sm" title="Delete" variant="danger" loading={isBusy(`scholarship-del-${item.id}`)} disabled={anyBusy} onPress={() => void deleteScholarship(item)} />
             </Row>
           </Card>
         ))}
         {renderSectionToggle("scholarships", scholarships.length)}
         {!scholarships.length && !loading ? emptyCard("No scholarships yet. Use the form above to publish the first one.") : null}
 
-        {/* ------------------------------------------------ appointments */}
-        {h("Appointment oversight", `Review appointment requests and their current status · ${appointments.length} records. Members and assigned counsellors manage changes.`)}
-        {visibleItems("appointments", appointments).map((item) => (
-          <Card key={item.id} style={adminCardStyle}>
+        </> : null}
+
+        {section === "platform" ? <>
+        {/* ------------------------------------------------ service areas */}
+        {h("LGA / LCDA access management", `Control which Lagos service areas are available during registration · ${serviceAreas.length} areas.`)}
+        {visibleItems("serviceAreas", serviceAreas).map((area) => (
+          <Card key={area.id} style={adminCardStyle}>
             <Row style={{ justifyContent: "space-between" }}>
-              <Text style={{ color: colors.ink, fontWeight: "800", flex: 1 }}>{item.member.displayName || item.member.email}</Text>
-              <Pill label={item.status.replaceAll("_", " ")} tone={item.status === "COMPLETED" ? "green" : item.status === "CANCELLED" || item.status === "NO_SHOW" ? "red" : "amber"} />
-            </Row>
-            <Text style={{ color: colors.muted, fontSize: 12 }}>{item.topic?.name || "Counselling"} · {item.counsellor.user.displayName || item.counsellor.user.email}</Text>
-            <Text style={{ color: colors.muted }}>{new Date(item.startsAt).toLocaleString()}</Text>
-          </Card>
-        ))}
-        {renderSectionToggle("appointments", appointments.length)}
-        {!appointments.length && !loading ? emptyCard("No appointment records yet.") : null}
-
-        {/* ------------------------------------------------ discussions */}
-        {h("Unassigned counselling discussions", `Automatically assign open discussions to an available counsellor with the matching topic and lowest current load · ${unassignedDiscussions.length} awaiting assignment.`)}
-        {visibleItems("unassignedDiscussions", unassignedDiscussions).map((item) => (
-          <Card key={item.id} style={adminCardStyle}>
-            <Text style={{ color: colors.ink, fontWeight: "800" }}>{item.title}</Text>
-            <Text style={{ color: colors.muted, fontSize: 12 }}>{item.topic.name} · {item.creator.displayName || item.creator.email} · {item._count.messages} messages</Text>
-            <Button title="Auto-assign counsellor" loading={isBusy(`assign-${item.id}`)} disabled={anyBusy} onPress={() => void autoAssign(item)} />
-          </Card>
-        ))}
-        {renderSectionToggle("unassignedDiscussions", unassignedDiscussions.length)}
-        {!unassignedDiscussions.length && !loading ? emptyCard("There are no unassigned discussions.") : null}
-
-        {/* ------------------------------------------------ ratings */}
-        {h("Counsellor rating moderation", `Only approved ratings contribute to public counsellor averages · ${pendingRatings.length} awaiting review.`)}
-        {visibleItems("pendingRatings", pendingRatings).map((rating) => (
-          <Card key={rating.id} style={adminCardStyle}>
-            <Text style={{ color: colors.ink, fontWeight: "800" }}>{rating.score}/5 · {rating.counsellor.user.displayName || rating.counsellor.user.email}</Text>
-            <Text style={{ color: colors.muted, fontSize: 12 }}>From {rating.author.displayName || rating.author.email} · {rating.discussion?.title || "Appointment rating"}</Text>
-            {rating.feedback ? <Text style={{ color: colors.muted }}>{rating.feedback}</Text> : null}
-            <Row style={{ gap: 8 }}>
-              <Button title="Approve" loading={isBusy(`rating-${rating.id}`)} disabled={anyBusy} onPress={() => void moderate(rating, "APPROVED")} />
-              <Button title="Reject" variant="danger" disabled={anyBusy} onPress={() => void moderate(rating, "REJECTED")} />
-            </Row>
-          </Card>
-        ))}
-        {renderSectionToggle("pendingRatings", pendingRatings.length)}
-        {!pendingRatings.length && !loading ? emptyCard("No ratings are waiting for moderation.") : null}
-
-        {/* ------------------------------------------------ topics */}
-        {h("Counselling topic management", `Create topics and control whether members can select them · ${topics.length} topics.`)}
-        <Card style={adminCardStyle}>
-          {title("Create a counselling topic", "Topics help members find the right counselling support.")}
-          <Field label="Topic name" value={newTopic} onChangeText={(v) => { setNewTopic(v); if (topicErrors.name) setTopicErrors((e) => ({ ...e, name: null })); }} placeholder="e.g. Career development" required maxLength={120} error={topicErrors.name} editable={!anyBusy} />
-          <Field label="Description" value={description} onChangeText={setDescription} placeholder="What this topic covers" multiline optional maxLength={500} error={topicErrors.description} editable={!anyBusy} />
-          <Button title={isBusy("topic-create") ? "Saving…" : "Add topic"} loading={isBusy("topic-create")} disabled={anyBusy} onPress={() => void addTopic()} />
-        </Card>
-        {visibleItems("topics", topics).map((topic) => (
-          <Card key={topic.id} style={adminCardStyle}>
-            <Row style={{ justifyContent: "space-between" }}>
-              <View style={{ flex: 1, gap: 4 }}>
-                <Text style={{ color: colors.ink, fontWeight: "800" }}>{topic.name}</Text>
-                <Text style={{ color: colors.muted, fontSize: 12 }}>{topic.description || "No description"} · {topic._count.counsellors} counsellors · {topic._count.discussions} discussions</Text>
+              <View style={{ flex: 1, gap: 3 }}>
+                <Text style={{ color: colors.ink, fontWeight: "800" }}>{area.lga}</Text>
+                <Text style={{ color: colors.muted, fontSize: 12 }}>{area.lcda} · {area.state}</Text>
               </View>
-              <Pill label={topic.isActive ? "Active" : "Inactive"} tone={topic.isActive ? "green" : "red"} />
+              <Pill label={area.isActive ? "Available" : "Disabled"} tone={area.isActive ? "green" : "red"} />
             </Row>
-            <Button title={topic.isActive ? "Deactivate topic" : "Reactivate topic"} variant="secondary" loading={isBusy(`topic-${topic.id}`)} disabled={anyBusy} onPress={() => void toggleTopic(topic)} />
+            <Button size="sm" title={area.isActive ? "Disable area" : "Enable area"} variant="secondary" loading={isBusy(`area-${area.id}`)} disabled={anyBusy} onPress={() => void toggleServiceArea(area)} />
           </Card>
         ))}
-        {renderSectionToggle("topics", topics.length)}
-        {!topics.length && !loading ? emptyCard("No counselling topics yet. Create the first one above.") : null}
+        {renderSectionToggle("serviceAreas", serviceAreas.length)}
+        {!serviceAreas.length && !loading ? emptyCard("No service areas are configured.") : null}
+
 
         {/* ------------------------------------------------ audit */}
         {h("Administrative audit trail", `Recent account, topic, content, appointment and moderation actions · ${auditLogs.length} entries.`)}
@@ -661,6 +718,8 @@ export default function AdminDashboard() {
         ))}
         {renderSectionToggle("auditLogs", auditLogs.length)}
         {!auditLogs.length && !loading ? emptyCard("No administrative actions have been recorded yet.") : null}
+        </> : null}
+
         <Text style={{ color: colors.muted, fontSize: 11, lineHeight: 17 }}>
           Sensitive member wellbeing entries are not exposed in this dashboard. Discussion access is restricted to the member, their assigned counsellor and authorised administrators.
         </Text>

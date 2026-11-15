@@ -27,9 +27,10 @@ function SaveButton({ saved, onPress, label }: { saved: boolean; onPress: () => 
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={`${saved ? "Remove from saved" : "Save"}: ${label}`}
+      accessibilityState={{ selected: saved }}
       hitSlop={10}
       onPress={onPress}
-      style={{ width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center", backgroundColor: saved ? colors.accentTint : colors.surfaceSecondary }}
+      style={{ width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center", backgroundColor: saved ? colors.accentTint : colors.surfaceSecondary }}
     >
       <Ionicons name={saved ? "heart" : "heart-outline"} size={20} color={saved ? colors.primary : colors.muted} />
     </Pressable>
@@ -84,7 +85,10 @@ export function ScholarshipCard({ item, saved, onToggleSave, onPress }: { item: 
           <Text style={{ color: colors.ink, fontSize: 12, fontWeight: "800" }}>Eligibility</Text>
           <Text numberOfLines={3} style={{ color: colors.muted, fontSize: 12, lineHeight: 18 }}>{item.eligibility}</Text>
         </View>
-        <Text style={{ color: colors.muted, fontSize: 12 }}>Deadline: {formatDisplayDate(item.deadline)}</Text>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+          <Ionicons name="calendar-outline" size={15} color={colors.muted} />
+          <Text style={{ color: colors.muted, fontSize: 12, fontWeight: "600" }}>Deadline {formatDisplayDate(item.deadline)}</Text>
+        </View>
       </View>
     </View>
   );
@@ -97,7 +101,7 @@ export function FeaturedBanner({ eyebrow, title, subtitle, imageUrl, onPress }: 
     <Pressable accessibilityRole="button" accessibilityLabel={`${eyebrow}: ${title}`} onPress={onPress} style={({ pressed }) => ({ opacity: pressed ? 0.92 : 1 })}>
       <View style={{ ...cardStyle, borderRadius: 24 }}>
         <SmartImage uri={imageUrl} aspectRatio={16 / 9} radius={0} fallbackIcon="sparkles-outline" />
-        <View style={{ position: "absolute", left: 0, right: 0, bottom: 0, padding: 16, gap: 4, backgroundColor: "rgba(15,23,42,0.62)" }}>
+        <View style={{ position: "absolute", left: 0, right: 0, bottom: 0, padding: 16, gap: 4, backgroundColor: "rgba(15,23,42,0.72)" }}>
           <Text style={{ color: "#C7D2FE", fontSize: 11, fontWeight: "800", letterSpacing: 1.1 }}>{eyebrow.toUpperCase()}</Text>
           <Text numberOfLines={2} style={{ color: colors.white, fontSize: 19, lineHeight: 25, fontWeight: "800" }}>{title}</Text>
           {subtitle ? <Text numberOfLines={1} style={{ color: "#E2E8F0", fontSize: 12 }}>{subtitle}</Text> : null}

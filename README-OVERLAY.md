@@ -1,21 +1,39 @@
-# How to apply `mentorship-plus-updates.zip`
+# Mentorship+ UI/UX overlay: how to apply
 
-1. **Back up.** Copy `C:\Users\Anita Nwaobi\Documents\Projects\mentorship-plus` to a new folder (or `git commit` everything first).
-2. **Extract.** Right-click the ZIP → *Extract All…*, choose the `mentorship-plus` folder itself (the ZIP's top level mirrors the project root: `app/`, `src/`, `api/`). Choose **Replace the files in the destination** when prompted. Only files listed in `CHANGELOG.md` are touched; no secrets or `.env` files are included.
-3. **Database (safe, additive).**
-   ```
-   cd mentorship-plus
-   npm run api:db:generate
-   npm run api:db:migrate        # applies 20261114090000_content_images (adds two nullable columns)
-   ```
-   For production on Render, run the same `prisma migrate deploy` against the production `DATABASE_URL` before/with deploying the new API build. Never use `migrate reset`.
-4. **Storage.** No new variables. Ensure `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` and `SUPABASE_STORAGE_BUCKET` are set on Render and the bucket is **public** (content images are stored under `content/` in the same bucket as profile photos).
-5. **Validate.**
-   ```
-   npx tsc --noEmit
-   npm run api:build
-   npm run api:test
-   npm run api:db:validate
-   node --test src/lib/validation.test.ts   # Node 22.18+
-   ```
-6. **Ship.** Deploy the API first (new endpoints), then publish the app (`eas update`; no native module was added, so no new store build is needed).
+This ZIP contains only new and modified files, at their exact project-relative paths. It touches `app/` and `src/` only (23 files). No backend, database, config or dependency changes, so no `npm install` is needed.
+
+## 1. Back up
+From the project root (`C:\Users\Anita Nwaobi\Documents\Projects\mentorship-plus`):
+
+```powershell
+git status                      # commit or stash anything pending
+git checkout -b uiux-upgrade    # recommended: work on a branch
+```
+No git? Copy the `app` and `src` folders somewhere safe first.
+
+## 2. Extract
+Extract `mentorship-plus-uiux-updates.zip` **into the project root** and choose "Replace" when prompted. Or:
+
+```powershell
+Expand-Archive -Path .\mentorship-plus-uiux-updates.zip -DestinationPath . -Force
+```
+You should see `CHANGELOG.md` and `README-OVERLAY.md` appear in the root. They are documentation and can be deleted.
+
+## 3. Validate
+```powershell
+npx tsc --noEmit
+node --test src/lib/validation.test.ts
+npx expo start -c
+```
+Backend commands (`npm run api:build`, `npm run api:test`) are not affected.
+
+## 4. Manual checks (not possible to run in the build environment)
+- Sign in as **member, counsellor, admin and super admin**: each lands on the right dashboard.
+- Register end to end: LGA, then LCDA, then profile (use the date-of-birth year picker), then email verification.
+- Student: save and unsave an item, complete a goal, book and cancel an appointment, start a discussion, send a message, close it and rate it.
+- Counsellor: switch availability, confirm / complete / no-show an appointment, reply in a discussion.
+- Admin: switch every tab; create, edit, unpublish and delete a resource and a scholarship (including image upload); moderate a rating; auto-assign a discussion; invite a counsellor.
+- Check on a small phone, a notched phone and a tablet or the web build. Turn on large system text and a screen reader (TalkBack / VoiceOver) once.
+
+## Roll back
+`git checkout -- app src` (or restore your backup copy), then delete `src/lib/format.ts`.

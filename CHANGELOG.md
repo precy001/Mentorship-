@@ -1,40 +1,42 @@
-# Mentorship+ — UX, forms, media & functional audit: CHANGELOG
+# Mentorship+ UI/UX upgrade: changelog
 
-## Added files
-| File | Purpose |
+Scope: presentation only. No backend, database, API client, context, routing, or `package.json` changes.
+Every API call, handler, route and role guard is preserved. Real data is still used everywhere.
+
+## Shared foundation
+
+| File | Changes |
 |---|---|
-| `api/prisma/migrations/20261114090000_content_images/migration.sql` | Adds nullable `imageUrl` to `Resource` and `Scholarship` (additive, no data touched) |
-| `api/src/storage/storage.service.ts`, `storage.module.ts`, `image-validation.ts` | The single Supabase Storage integration (extracted from `ProfileService`); magic-byte image validation; best-effort cleanup |
-| `api/src/content/content.constants.ts` | Predefined resource categories, scholarship levels, read-time rule |
-| `api/src/common/transformers.ts` | `@Trim()` / `@NormalizeEmail()` DTO transformers |
-| `api/test/image-validation.spec.ts`, `storage.service.spec.ts`, `admin-content.service.spec.ts`, `admin-content.dto.spec.ts` | New backend tests |
-| `src/components/Forms.tsx` | `SelectField` (dropdown), `DatePickerField` (calendar), `ImageUploadField` (pick/preview/replace/remove), `SmartImage` (loading + fallback), `Toast` |
-| `src/components/ContentCards.tsx` | Image-supported `ResourceCard`, `ScholarshipCard`, `FeaturedBanner`, `DeadlineBadge` |
-| `src/lib/validation.ts` (+ `validation.test.ts`) | Email, phone, integer, date, length, image validators |
-| `src/lib/options.ts`, `src/lib/feedback.ts`, `src/lib/imagePicker.ts` | Shared option lists; confirm/toast/error helpers; image picking + validation |
+| `src/lib/theme.ts` | Added (nothing removed): `type` scale, `shadows`, `layout` constants and extra colour tokens (`placeholder`, `brandSurface`, `onDark`, `mint`, ...). |
+| `src/lib/format.ts` (**new**) | Shared date/time formatting (`Mon, 16 Nov · 10:00 am`), `humanize` for enum values, `pluralize`, and status-to-colour helpers for discussions, appointments and availability. Replaces raw `toLocaleString()` and `REPLACE_UNDERSCORE` strings. |
+| `src/components/UI.tsx` | Existing exports kept with the same props. `Screen` now respects the status bar / notch, centres content on tablets and web (max 640pt), reserves room for the tab bar and supports pull-to-refresh. `Button` gains `size`, `icon`, `grow`, `style` and a `dangerSoft` variant. `Field` gains a focus ring, leading icon and show/hide password. New shared components: `BackLink`, `SectionHeader`, `HeroCard`, `PressableCard`, `ListRow`/`ListGroup`, `InfoRow`, `StatTile`, `Chip`, `OptionCard`, `Segmented`, `StarRating`, `Avatar`, `IconBadge`, `EmptyState`, `ErrorState`, `LoadingBlock`, `SearchField`, `StepProgress`, `ButtonRow`, `Divider`. |
+| `src/components/Forms.tsx` | `DatePickerField` gets `defaultView` and `descendingYears` (needed for date of birth). 44pt nav, year and sheet buttons. Better placeholder / disabled-day contrast. |
+| `src/components/ContentCards.tsx` | Save button is a 44pt target with selected state announced. Scholarship deadline gets an icon. Stronger text strip on featured banners. |
 
-## Replaced files
-| File | What changed |
+## Screens
+
+| File | Improvements |
 |---|---|
-| `api/prisma/schema.prisma` | `imageUrl String? @db.VarChar(2048)` on `Resource` and `Scholarship` |
-| `api/src/admin/admin.dto.ts` | Trimmed/validated DTOs; category & level must come from predefined lists; read time 1–180 min; deadline `@IsDateString`; optional `imageUrl`; invite email normalised |
-| `api/src/admin/admin.service.ts` | Image upload, `imageUrl` persisted; **new** update + delete for resources and scholarships; future-deadline rule; only platform-uploaded image URLs accepted; old image removed on replace/delete; audit entries |
-| `api/src/admin/admin.controller.ts` | New: `POST /admin/uploads/content-image`, `PUT/DELETE /admin/resources/:id`, `PUT/DELETE /admin/scholarships/:id` (all ADMIN/SUPER_ADMIN only) |
-| `api/src/admin/admin.module.ts`, `profile/profile.module.ts`, `profile/profile.service.ts` | Use the shared `StorageService` (profile uploads keep the same bucket, path and URL format) |
-| `api/src/main.ts`, `common/filters/api-exception.filter.ts` | Validation messages are now returned in production (previously generic "Bad Request"); multi-message join; friendly 413 text |
-| `api/src/auth/dto/register.dto.ts` | Phone number format validation |
-| `api/.env.example` | Documents `content/` folder in the existing bucket (no new variables) |
-| `app/(admin)/index.tsx` | Rewritten forms (dropdowns, date picker, numeric field, inline validation, optional markers), image upload, edit/delete, loading + duplicate-submit lock, success/error feedback, confirmations, empty states, inline load-error banner |
-| `app/(student)/explore.tsx`, `app/(student)/index.tsx`, `app/feature/[slug].tsx` | Image cards, featured banner, category filter, retry; appointment date uses a calendar instead of typed text |
-| `src/components/UI.tsx` | `Field`: error/required/optional/helper/counter/a11y; `Button`: `loading`; `Screen`: keyboard handling + `scrollRef` (all existing props unchanged) |
-| `src/lib/api.ts` | Shared multipart image upload (profile upload delegates to it); new content endpoints/types |
-| `src/context/AppContext.tsx` | Resources/scholarships carry `imageUrl`; deadline kept as full ISO (fixes a possible off-by-one date) |
+| `app/index.tsx` (Welcome) | No more flash of "Get started" buttons while a saved session is restored (shows progress instead). Respects the system Reduce Motion setting. Footer text contrast fixed. Safe-area padding. |
+| `app/auth.tsx` | Labelled fields with icons, show/hide password, inline validation, keyboard "Go" submits. Sign in / Create account segmented switch. Sign-up mode explains the registration steps instead of an empty card. 44pt links. |
+| `app/forgot-password.tsx`, `reset-password.tsx`, `verify.tsx` | Same header pattern, labelled fields, inline errors, keyboard submit, accessible back control. |
+| `app/counsellor-invite.tsx` | Clear rules list, visible missing-token warning, accessible back control. |
+| `app/register-lga.tsx` | Step progress bar. LCDA options expand directly under the chosen LGA (no more scrolling to find them). Search appears when there are many LGAs. Retry on load failure. Radio / checkbox semantics and 48pt rows. |
+| `app/register-biodata.tsx` | Removed the nested `ScrollView`. The date-of-birth picker now has a year selector (previously one month per tap, about 400 taps to reach 1990). Every field has a visible label and inline error. Category choices are large radio cards. Retry for categories. "Change" link for location. Alerts and API payload unchanged. |
+| `app/(student)/_layout.tsx` | Tab bar clears the home indicator, filled icon for the active tab, darker inactive colour for contrast, hides on keyboard, accessibility labels. |
+| `app/(student)/index.tsx` (Home) | Time-of-day greeting, profile avatar shortcut, unread count on the bell, empty goals state with an action, odd quick action fills the row, appointments as tappable rows with date and status, "See all" links, pull-to-refresh. |
+| `app/(student)/explore.tsx` | Segmented Resources / Scholarships with counts, shared search field, 44pt filter chips aligned to the screen edge, result count, loading / error / empty states, clear-filters action, deep-link tab sync, pull-to-refresh. |
+| `app/(student)/counselling.tsx` | Topic chips are accessible radios. Title / message limits match the server (4-180 / 5000) with inline errors. Status colours (completed is no longer red). Whole-card tap targets. Loading, error and empty states. |
+| `app/(student)/activities.tsx` | Emoji glyph icons replaced with real icons. Seven items grouped under Grow / Look after yourself / Keep track as list rows. |
+| `app/(student)/profile.tsx` | Avatar with camera badge, grouped identity rows, membership chips with "Current" summary, Save disabled until something changes, activity stat tiles, grouped navigation rows, soft-danger Log out. |
+| `app/feature/[slug].tsx` | Back control and consistent cards on every sub-screen. Booking: topic radio cards, time chips, formatted ranges. Assessment: option cards. Wellbeing: mood chips with icons. Goals: real checkboxes. Notifications: clear unread styling. History: readable labels. Accessible 5-star ratings. Empty states throughout. |
+| `app/discussion/[id].tsx` | Chat bubbles with timestamps and counsellor marker. Composer pinned above the keyboard. Auto-scroll to newest message. Close / cancel moved to the header card (away from Send). Accessible star rating. Fixed duplicated "Rating submitted" pill. |
+| `app/(counsellor)/index.tsx` | Header with avatar and sign-out, stat tiles, availability as a clear current-state selector (capacity rule kept), active discussions listed first, appointment actions with per-item loading, pull-to-refresh. Removed a duplicate role-guard effect (behaviour identical). |
+| `app/(admin)/index.tsx` | One 700-line scroll split into six tabs (Overview, Accounts, Counselling, Resources, Scholarships, Platform) with a badge for items needing attention. Overview has icon stat tiles and a "needs attention" card. Account cards show an avatar. Suspend / Deactivate / Reject use a softer destructive style. All forms, handlers and confirmations are the original code. |
 
-## Database migration
-Additive only (`ADD COLUMN IF NOT EXISTS ... NULL`). Run from the project root:
-```
-npm run api:db:migrate
-npm run api:db:generate
-```
-## Dependencies
-None added or changed. Run `npm run api:install` only if `api/node_modules` is missing.
+## Small behaviour differences (all UI-level)
+
+- Register: "Complete registration" is no longer greyed out when no category is chosen. It validates and highlights the field instead.
+- Profile: "Save membership changes" is disabled until the selection differs from the current one.
+- Counselling: titles shorter than 4 characters are caught on the device (the server already required 4).
+- Counsellor: tapping Available at the 5-discussion limit shows an explanation (previously the button was silently disabled).

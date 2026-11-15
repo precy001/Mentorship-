@@ -1,31 +1,42 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Alert, Pressable, Text, View } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
-import { Screen, Button, Card } from "@/src/components/UI";
+import { Screen, Button, Card, BackLink, Heading, StepProgress, ErrorState, LoadingBlock, EmptyState, SearchField } from "@/src/components/UI";
 import { colors } from "@/src/lib/theme";
+import { pluralize } from "@/src/lib/format";
 import { apiGetLocations } from "@/src/lib/api";
 
 type LocationGroup = { state: string; lga: string; lcs: string[] };
-
 
 export default function RegisterLga() {
   const [locations, setLocations] = useState<LocationGroup[]>([]);
   const [loadingLocations, setLoadingLocations] = useState(true);
   const [locationError, setLocationError] = useState("");
-  useEffect(() => {
-    let active = true;
-    apiGetLocations().then(result => {
+  const [search, setSearch] = useState("");
+
+  const loadLocations = useCallback(async () => {
+    setLoadingLocations(true);
+    try {
+      const result = await apiGetLocations();
       const groups = new Map<string, LocationGroup>();
       for (const item of result.locations) {
         const key = `${item.state}::${item.lga}`;
         const group = groups.get(key) || { state: item.state, lga: item.lga, lcs: [] };
-        group.lcs.push(item.lcda); groups.set(key, group);
+        group.lcs.push(item.lcda);
+        groups.set(key, group);
       }
-      if (active) { setLocations([...groups.values()]); setLocationError(""); }
-    }).catch(error => { if (active) setLocationError(error instanceof Error ? error.message : "Service areas could not be loaded."); })
-      .finally(() => { if (active) setLoadingLocations(false); });
-    return () => { active = false; };
+      setLocations([...groups.values()]);
+      setLocationError("");
+    } catch (error) {
+      setLocationError(error instanceof Error ? error.message : "Service areas could not be loaded.");
+    } finally {
+      setLoadingLocations(false);
+    }
   }, []);
+
+  useEffect(() => { void loadLocations(); }, [loadLocations]);
+
   const [selectedLga, setSelectedLga] = useState<string | null>(null);
   const [selectedLcda, setSelectedLcda] = useState<string | null>(null);
   const [confirmed, setConfirmed] = useState(false);
@@ -35,6 +46,8 @@ export default function RegisterLga() {
     [locations, selectedLga],
   );
   const validLcda = Boolean(chosen && selectedLcda && chosen.lcs.includes(selectedLcda));
+  const term = search.trim().toLowerCase();
+  const visible = term ? locations.filter((item) => `${item.lga} ${item.state}`.toLowerCase().includes(term)) : locations;
 
   const chooseLga = (lga: string) => {
     setSelectedLga(lga);
@@ -67,139 +80,99 @@ export default function RegisterLga() {
     });
   };
 
+
   return (
-    <Screen style={{ gap: 18 }}>
-      <Pressable onPress={() => router.back()}>
-        <Text style={{ color: colors.primary, fontWeight: "700", paddingVertical: 6 }}>
-          ‹  Back
-        </Text>
-      </Pressable>
+    <Screen>
+      <BackLink />
+      <StepProgress step={1} total={2} label="Your location" />
+      <Heading
+        title="Where are you based?"
+        subtitle="Choose your Local Government Area (LGA), then the LCDA that applies to you. You’ll complete your profile next."
+      />
 
-      <View style={{ gap: 7 }}>
-        <Text style={{ color: colors.primary, fontSize: 11, fontWeight: "800", letterSpacing: 1.6 }}>
-          STEP 1 OF 2
-        </Text>
-        <Text style={{ color: colors.ink, fontSize: 29, lineHeight: 35, fontWeight: "700", letterSpacing: -0.8 }}>
-          Where are you based?
-        </Text>
-        <Text style={{ color: colors.muted, fontSize: 14, lineHeight: 21 }}>
-          Choose your Local Government Area (LGA). You’ll confirm the associated LCDA before completing your profile.
-        </Text>
-      </View>
+      {loadingLocations ? <LoadingBlock label="Loading available service areas…" /> : null}
+      {!!locationError && !loadingLocations ? (
+        <ErrorState title="Locations unavailable" message={locationError} onRetry={() => void loadLocations()} />
+      ) : null}
+      {!loadingLocations && !locationError && !locations.length ? (
+        <EmptyState icon="location-outline" title="No areas available yet" message="No registration areas are currently enabled. Please contact Mentorship+ support." />
+      ) : null}
 
-      <Text style={{ color: colors.ink, fontSize: 15, fontWeight: "800" }}>
-        Select your LGA / LCDA
-      </Text>
+      {locations.length > 8 ? <SearchField value={search} onChangeText={setSearch} placeholder="Search your LGA" accessibilityLabel="Search LGAs" /> : null}
 
-      {loadingLocations ? <Text style={{ color: colors.muted }}>Loading available service areas…</Text> : null}
-      {!!locationError ? <Card><Text style={{ color: colors.error, fontWeight: "800" }}>Locations unavailable</Text><Text style={{ color: colors.muted }}>{locationError}</Text></Card> : null}
-      {!loadingLocations && !locationError && !locations.length ? <Card><Text style={{ color: colors.muted }}>No registration areas are currently enabled. Please contact Mentorship+ support.</Text></Card> : null}
-      <View style={{ gap: 9 }}>
-        {locations.map((item) => {
+      <View style={{ gap: 10 }}>
+        {visible.map((item) => {
           const active = selectedLga === item.lga;
           return (
-            <Pressable
-              key={item.lga}
-              onPress={() => chooseLga(item.lga)}
-              accessibilityRole="button"
-              accessibilityState={{ selected: active }}
+            <View
+              key={`${item.state}-${item.lga}`}
               style={{
-                borderWidth: 1,
+                borderWidth: 1.5,
                 borderColor: active ? colors.primary : colors.line,
-                backgroundColor: active ? "#EDF9F6" : colors.surface,
-                borderRadius: 16,
-                padding: 15,
-                flexDirection: "row",
-                alignItems: "center",
-                gap: 12,
+                backgroundColor: active ? colors.brandSurface : colors.surface,
+                borderRadius: 18,
+                overflow: "hidden",
               }}
             >
-              <View style={{ flex: 1, gap: 4 }}>
-                <Text style={{ color: colors.ink, fontSize: 14, fontWeight: "700" }}>
-                  {item.lga}
-                </Text>
-                <Text style={{ color: colors.muted, fontSize: 12 }}>
-                  {item.state} State · {item.lcs.length} LCDA options
-                </Text>
-              </View>
-              <View
-                style={{
-                  width: 22,
-                  height: 22,
-                  borderRadius: 11,
-                  borderWidth: 1.5,
-                  borderColor: active ? colors.primary : "#CBD5E1",
-                  backgroundColor: active ? colors.primary : "transparent",
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
+              <Pressable
+                onPress={() => chooseLga(item.lga)}
+                accessibilityRole="radio"
+                accessibilityLabel={`${item.lga}, ${item.state} State, ${pluralize(item.lcs.length, "LCDA option")}`}
+                accessibilityState={{ selected: active, checked: active }}
+                style={({ pressed }) => ({ minHeight: 64, padding: 15, flexDirection: "row", alignItems: "center", gap: 12, opacity: pressed ? 0.88 : 1 })}
               >
-                {active && <Text style={{ color: "white", fontWeight: "900", fontSize: 13 }}>✓</Text>}
-              </View>
-            </Pressable>
+                <View style={{ flex: 1, gap: 3 }}>
+                  <Text style={{ color: colors.ink, fontSize: 15, fontWeight: "800" }}>{item.lga}</Text>
+                  <Text style={{ color: colors.muted, fontSize: 12 }}>{item.state} State · {pluralize(item.lcs.length, "LCDA option")}</Text>
+                </View>
+                <View style={{ width: 24, height: 24, borderRadius: 12, borderWidth: 1.5, borderColor: active ? colors.primary : "#CBD5E1", backgroundColor: active ? colors.primary : "transparent", alignItems: "center", justifyContent: "center" }}>
+                  {active ? <Ionicons name="checkmark" size={14} color={colors.white} /> : null}
+                </View>
+              </Pressable>
+
+              {active ? (
+                <View style={{ paddingHorizontal: 12, paddingBottom: 12, gap: 6 }}>
+                  <Text style={{ color: colors.ink, fontWeight: "800", fontSize: 13, paddingHorizontal: 4, paddingTop: 4 }}>Select your LCDA</Text>
+                  {item.lcs.map((lcda) => {
+                    const picked = selectedLcda === lcda;
+                    return (
+                      <Pressable
+                        key={lcda}
+                        onPress={() => chooseLcda(lcda)}
+                        accessibilityRole="radio"
+                        accessibilityLabel={lcda}
+                        accessibilityState={{ selected: picked, checked: picked }}
+                        style={({ pressed }) => ({ minHeight: 48, paddingHorizontal: 12, borderRadius: 12, backgroundColor: picked ? colors.accentTint : colors.surface, borderWidth: 1, borderColor: picked ? colors.primary : colors.line, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10, opacity: pressed ? 0.88 : 1 })}
+                      >
+                        <Text style={{ color: colors.ink, fontSize: 14, fontWeight: picked ? "800" : "500", flex: 1 }}>{lcda}</Text>
+                        {picked ? <Ionicons name="checkmark-circle" size={20} color={colors.primary} /> : null}
+                      </Pressable>
+                    );
+                  })}
+                  <Pressable
+                    onPress={() => setConfirmed((value) => !value)}
+                    accessibilityRole="checkbox"
+                    accessibilityState={{ checked: confirmed }}
+                    style={{ flexDirection: "row", alignItems: "center", gap: 12, minHeight: 52, paddingHorizontal: 4 }}
+                  >
+                    <View style={{ width: 24, height: 24, borderRadius: 7, backgroundColor: confirmed ? colors.primary : colors.white, borderWidth: 1.5, borderColor: confirmed ? colors.primary : "#CBD5E1", alignItems: "center", justifyContent: "center" }}>
+                      {confirmed ? <Ionicons name="checkmark" size={16} color={colors.white} /> : null}
+                    </View>
+                    <Text style={{ color: colors.ink, flex: 1, fontSize: 13, lineHeight: 19 }}>I confirm that this is my correct LGA/LCDA area.</Text>
+                  </Pressable>
+                </View>
+              ) : null}
+            </View>
           );
         })}
+        {!!term && !visible.length && locations.length ? (
+          <Card><Text style={{ color: colors.muted, textAlign: "center" }}>No LGA matches “{search.trim()}”.</Text></Card>
+        ) : null}
       </View>
 
-      {chosen && (
-        <Card style={{ gap: 10, backgroundColor: "#F8FAFC" }}>
-          <Text style={{ color: colors.ink, fontWeight: "800" }}>
-            LCDA options for {chosen.lga}
-          </Text>
-          {chosen.lcs.map((lcda) => {
-            const active = selectedLcda === lcda;
-            return (
-              <Pressable
-                key={lcda}
-                onPress={() => chooseLcda(lcda)}
-                accessibilityRole="button"
-                accessibilityState={{ selected: active }}
-                style={{
-                  paddingVertical: 10,
-                  paddingHorizontal: 8,
-                  borderRadius: 10,
-                  backgroundColor: active ? "#E7F5F0" : "transparent",
-                  flexDirection: "row",
-                  justifyContent: "space-between",
-                }}
-              >
-                <Text style={{ color: colors.ink, fontSize: 13 }}>•  {lcda}</Text>
-                <Text style={{ color: active ? colors.primary : colors.muted, fontWeight: active ? "800" : "400" }}>
-                  {active ? "✓ Selected" : "Select"}
-                </Text>
-              </Pressable>
-            );
-          })}
-          <Pressable
-            onPress={() => setConfirmed((value) => !value)}
-            accessibilityRole="checkbox"
-            accessibilityState={{ checked: confirmed }}
-            style={{ flexDirection: "row", alignItems: "center", gap: 10, marginTop: 5 }}
-          >
-            <View
-              style={{
-                width: 23,
-                height: 23,
-                borderRadius: 7,
-                backgroundColor: confirmed ? colors.primary : "white",
-                borderWidth: 1,
-                borderColor: confirmed ? colors.primary : colors.line,
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              {confirmed && <Text style={{ color: "white", fontWeight: "900" }}>✓</Text>}
-            </View>
-            <Text style={{ color: colors.ink, flex: 1, fontSize: 13, lineHeight: 19 }}>
-              I confirm that this is my correct LGA/LCDA area.
-            </Text>
-          </Pressable>
-        </Card>
-      )}
-
       <Button title="Continue to profile" onPress={continueNext} disabled={loadingLocations || !!locationError || !locations.length} />
-      <Text style={{ color: colors.mutedLight, textAlign: "center", fontSize: 11, lineHeight: 16 }}>
-        Choose the correct location for your profile. Location availability will be expanded before nationwide launch.
+      <Text style={{ color: colors.muted, textAlign: "center", fontSize: 12, lineHeight: 17 }}>
+        Location availability will be expanded before nationwide launch.
       </Text>
     </Screen>
   );

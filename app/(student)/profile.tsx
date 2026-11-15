@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from "react";
-import { Alert, ActivityIndicator, Image, Text, View } from "react-native";
+import { Alert, Pressable, Text, View } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import { router } from "expo-router";
-import { Screen, Heading, Card, Button, Row } from "@/src/components/UI";
+import { Screen, Heading, Card, Button, Avatar, Pill, Divider, InfoRow, Chip, SectionHeader, StatTile, ListGroup, ListRow } from "@/src/components/UI";
 import { useApp } from "@/src/context/AppContext";
 import { colors } from "@/src/lib/theme";
 import { apiGetMembershipCategories, apiUpdateMembership, apiUploadProfilePicture, apiListActivities, MembershipCategory } from "@/src/lib/api";
@@ -18,6 +19,7 @@ export default function Profile() {
   useEffect(() => { apiGetMembershipCategories().then(setCategories).catch(error => Alert.alert("Membership options unavailable", error instanceof Error ? error.message : "Please try again.")); apiListActivities("WELLBEING_CHECKIN").then(items => setMoodCount(items.length)).catch(() => {}); }, []);
   const selectedCategory = categories.find(item => item.id === categoryId);
   const selectedSubcategory = selectedCategory?.subcategories.find(item => item.id === subcategoryId);
+  const unchanged = categoryId === (app.user?.categoryId || "") && subcategoryId === (app.user?.subcategoryId || "");
   const saveMembership = async () => {
     if (!selectedCategory || !selectedSubcategory) return Alert.alert("Choose your membership", "Select a category and a matching subcategory.");
     try { setSavingMembership(true); await apiUpdateMembership(categoryId, subcategoryId); app.updateMembership({ categoryId, categoryName: selectedCategory.name, categorySlug: selectedCategory.slug, subcategoryId, subcategoryName: selectedSubcategory.name, subcategorySlug: selectedSubcategory.slug }); Alert.alert("Membership updated", "Your dashboard will now reflect your selected category."); }
@@ -63,53 +65,76 @@ export default function Profile() {
     "NIN verification is not connected to an authorised verification provider yet. Your NIN has not been verified. Please try again when the verification service is configured.",
   );
 
+  const stats = [
+    { label: "Saved resources", value: app.savedResources.length, icon: "book-outline" as const },
+    { label: "Saved scholarships", value: app.savedScholarships.length, icon: "school-outline" as const },
+    { label: "Appointments", value: app.bookings.filter(b => b.status !== "cancelled").length, icon: "calendar-outline" as const },
+    { label: "Mood check-ins", value: moodCount, icon: "heart-outline" as const },
+  ];
+
   return (
-    <Screen>
+    <Screen tabBar>
       <Heading title="Your profile" subtitle="Manage your account and personal settings." />
+
       <Card>
-        <Row style={{ alignItems: "center" }}>
-          <View style={{ width: 76, height: 76, borderRadius: 24, backgroundColor: colors.softBlue, overflow: "hidden", alignItems: "center", justifyContent: "center" }}>
-            {app.user?.avatarUrl
-              ? <Image source={{ uri: app.user.avatarUrl }} style={{ width: 76, height: 76 }} resizeMode="cover" />
-              : <Text style={{ color: colors.primary, fontSize: 25, fontWeight: "800" }}>{(app.user?.name || "M").trim().charAt(0).toUpperCase()}</Text>}
-          </View>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 16 }}>
+          <Pressable accessibilityRole="button" accessibilityLabel={app.user?.avatarUrl ? "Change profile picture" : "Add profile picture"} disabled={uploading} onPress={() => void changePicture()}>
+            <Avatar name={app.user?.name} uri={app.user?.avatarUrl} size={80} />
+            <View style={{ position: "absolute", right: -6, bottom: -6, width: 30, height: 30, borderRadius: 15, backgroundColor: colors.primary, borderWidth: 2, borderColor: colors.white, alignItems: "center", justifyContent: "center" }}>
+              <Ionicons name={uploading ? "cloud-upload-outline" : "camera"} size={15} color={colors.white} />
+            </View>
+          </Pressable>
           <View style={{ flex: 1, gap: 4 }}>
-            <Text style={{ color: colors.ink, fontWeight: "900", fontSize: 18 }}>{app.user?.name || "Your account"}</Text>
-            <Text style={{ color: colors.muted }}>{app.user?.email || app.user?.role || "Member account"}</Text>
-            <Text onPress={changePicture} style={{ color: colors.primary, fontWeight: "800", marginTop: 3 }}>{uploading ? "Uploading picture…" : app.user?.avatarUrl ? "Change profile picture" : "Add profile picture"}</Text>
+            <Text style={{ color: colors.ink, fontWeight: "800", fontSize: 19, letterSpacing: -0.3 }} numberOfLines={2}>{app.user?.name || "Your account"}</Text>
+            <Text style={{ color: colors.muted, fontSize: 13 }} numberOfLines={1}>{app.user?.email || app.user?.role || "Member account"}</Text>
+            {app.user?.subcategoryName || app.user?.categoryName ? <Pill label={app.user?.subcategoryName || app.user?.categoryName || ""} tone="blue" /> : null}
           </View>
-          {uploading ? <ActivityIndicator color={colors.primary} /> : null}
-        </Row>
-        <View style={{ height: 1, backgroundColor: colors.line }} />
-        <Text style={{ color: colors.muted, fontSize: 12 }}>IDENTITY INFORMATION</Text>
-        <Text style={{ color: colors.ink, fontWeight: "700" }}>NIN · {masked}</Text>
-        <Text style={{ color: colors.ink }}>LGA · {app.user?.lga || "Not provided"}</Text>
-        <Text style={{ color: colors.ink }}>State · {app.user?.state || "—"}</Text>
+        </View>
+        <Button title={uploading ? "Uploading picture…" : app.user?.avatarUrl ? "Change profile picture" : "Add profile picture"} icon="camera-outline" variant="secondary" size="sm" loading={uploading} onPress={() => void changePicture()} />
       </Card>
 
       <Card>
-        <Text style={{ color: colors.ink, fontWeight: "800", fontSize: 16 }}>Membership category</Text>
-        <Text style={{ color: colors.muted, fontSize: 13 }}>You can change your category and subcategory. Your existing profile information will be retained.</Text>
-        <Text style={{ color: colors.ink, fontWeight: "700" }}>Category</Text>
-        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>{categories.map(category => <Text key={category.id} onPress={() => { setCategoryId(category.id); setSubcategoryId(""); }} style={{ paddingHorizontal: 12, paddingVertical: 9, borderRadius: 18, overflow: "hidden", color: categoryId === category.id ? "#fff" : colors.ink, backgroundColor: categoryId === category.id ? colors.primary : colors.softBlue, fontWeight: "700" }}>{category.name}</Text>)}</View>
-        <Text style={{ color: colors.ink, fontWeight: "700" }}>Subcategory</Text>
-        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>{(selectedCategory?.subcategories || []).map(subcategory => <Text key={subcategory.id} onPress={() => setSubcategoryId(subcategory.id)} style={{ paddingHorizontal: 12, paddingVertical: 9, borderRadius: 18, overflow: "hidden", color: subcategoryId === subcategory.id ? "#fff" : colors.ink, backgroundColor: subcategoryId === subcategory.id ? colors.primary : colors.softBlue, fontWeight: "700" }}>{subcategory.name}</Text>)}</View>
-        <Button title={savingMembership ? "Saving…" : "Save membership changes"} onPress={() => void saveMembership()} disabled={savingMembership || !categoryId || !subcategoryId} />
+        <Heading title="Identity" small subtitle="Your NIN is always shown masked." />
+        <InfoRow icon="id-card-outline" label="NIN" value={masked} />
+        <InfoRow icon="location-outline" label="LGA" value={app.user?.lga || "Not provided"} />
+        <InfoRow icon="map-outline" label="State" value={app.user?.state || "—"} />
+        <Divider />
+        <Button title="Verify NIN" icon="shield-checkmark-outline" variant="ghost" size="sm" onPress={verifyNin} />
       </Card>
-
-      <Button title="Verify NIN" onPress={verifyNin} variant="secondary" />
 
       <Card>
-        <Text style={{ color: colors.ink, fontWeight: "800", fontSize: 16 }}>Your Activity</Text>
-        <Row style={{ justifyContent: "space-between" }}><Text style={{ color: colors.muted }}>Saved resources</Text><Text style={{ color: colors.ink, fontWeight: "800" }}>{app.savedResources.length}</Text></Row>
-        <Row style={{ justifyContent: "space-between" }}><Text style={{ color: colors.muted }}>Saved scholarships</Text><Text style={{ color: colors.ink, fontWeight: "800" }}>{app.savedScholarships.length}</Text></Row>
-        <Row style={{ justifyContent: "space-between" }}><Text style={{ color: colors.muted }}>Appointments</Text><Text style={{ color: colors.ink, fontWeight: "800" }}>{app.bookings.filter(b => b.status !== "cancelled").length}</Text></Row>
-        <Row style={{ justifyContent: "space-between" }}><Text style={{ color: colors.muted }}>Mood check-ins</Text><Text style={{ color: colors.ink, fontWeight: "800" }}>{moodCount}</Text></Row>
+        <Heading title="Membership category" small subtitle="You can change your category and subcategory. Your existing profile information will be retained." />
+        {app.user?.categoryName ? (
+          <View accessible accessibilityLabel={`Current membership: ${app.user.categoryName}${app.user.subcategoryName ? `, ${app.user.subcategoryName}` : ""}`} style={{ flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: colors.brandSurface, padding: 12, borderRadius: 14 }}>
+            <Ionicons name="ribbon-outline" size={18} color={colors.primary} />
+            <Text style={{ color: colors.ink, fontSize: 13, flex: 1 }}>Current: <Text style={{ fontWeight: "800" }}>{app.user.categoryName}{app.user.subcategoryName ? ` · ${app.user.subcategoryName}` : ""}</Text></Text>
+          </View>
+        ) : null}
+        <Text style={{ color: colors.ink, fontWeight: "700", fontSize: 13 }}>Category</Text>
+        <View accessibilityRole="radiogroup" style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+          {categories.map(category => <Chip key={category.id} label={category.name} accessibilityRole="radio" selected={categoryId === category.id} onPress={() => { setCategoryId(category.id); setSubcategoryId(""); }} />)}
+        </View>
+        {selectedCategory ? <>
+          <Text style={{ color: colors.ink, fontWeight: "700", fontSize: 13 }}>Subcategory</Text>
+          <View accessibilityRole="radiogroup" style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+            {selectedCategory.subcategories.map(subcategory => <Chip key={subcategory.id} label={subcategory.name} accessibilityRole="radio" selected={subcategoryId === subcategory.id} onPress={() => setSubcategoryId(subcategory.id)} />)}
+          </View>
+        </> : null}
+        <Button title={savingMembership ? "Saving…" : "Save membership changes"} loading={savingMembership} onPress={() => void saveMembership()} disabled={!categoryId || !subcategoryId || unchanged} />
+        {unchanged ? <Text style={{ color: colors.muted, fontSize: 12, textAlign: "center" }}>Choose a different category or subcategory to save a change.</Text> : null}
       </Card>
 
-      <Button title="Saved items" onPress={() => router.push({ pathname: "/feature/[slug]", params: { slug: "saved" } })} variant="secondary" />
-      <Button title="Help & frequently asked questions" onPress={() => router.push({ pathname: "/feature/[slug]", params: { slug: "help" } })} variant="ghost" />
-      <Button title="Log out" onPress={() => Alert.alert("Log out?", "You will be signed out of your account on this device.", [{ text: "Cancel", style: "cancel" }, { text: "Log out", style: "destructive", onPress: async () => { await app.logout(); router.replace({ pathname: "/auth", params: { mode: "signin", signedOut: "1" } }); } }])} variant="danger" />
+      <SectionHeader title="Your activity" />
+      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 12 }}>
+        {stats.map(stat => <StatTile key={stat.label} label={stat.label} value={stat.value} icon={stat.icon} />)}
+      </View>
+
+      <ListGroup>
+        <ListRow icon="heart-outline" title="Saved items" subtitle="Resources and scholarships you’ve saved" onPress={() => router.push({ pathname: "/feature/[slug]", params: { slug: "saved" } })} />
+        <ListRow icon="help-circle-outline" title="Help & frequently asked questions" last onPress={() => router.push({ pathname: "/feature/[slug]", params: { slug: "help" } })} />
+      </ListGroup>
+
+      <Button title="Log out" icon="log-out-outline" variant="dangerSoft" onPress={() => Alert.alert("Log out?", "You will be signed out of your account on this device.", [{ text: "Cancel", style: "cancel" }, { text: "Log out", style: "destructive", onPress: async () => { await app.logout(); router.replace({ pathname: "/auth", params: { mode: "signin", signedOut: "1" } }); } }])} />
     </Screen>
   );
 }

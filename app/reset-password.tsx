@@ -1,7 +1,8 @@
 import React, { useState } from "react";
-import { Alert, Text, TextInput, View } from "react-native";
+import { Alert, Text, View } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
-import { Screen, Heading, Card, Button } from "@/src/components/UI";
+import { Screen, Heading, Card, Button, Field, BackLink, IconBadge } from "@/src/components/UI";
 import { colors } from "@/src/lib/theme";
 import { apiResetPassword } from "@/src/lib/api";
 
@@ -10,6 +11,7 @@ export default function ResetPassword() {
   const token = typeof params.token === "string" ? params.token.trim() : "";
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
+  const [errors, setErrors] = useState<{ password?: string | null; confirm?: string | null }>({});
   const [busy, setBusy] = useState(false);
 
   const submit = async () => {
@@ -17,11 +19,16 @@ export default function ResetPassword() {
       Alert.alert("Invalid link", "Request a new password-reset email.");
       return;
     }
-    if (password.length < 8) {
+    const next = {
+      password: password.length >= 8 ? null : "Use at least 8 characters.",
+      confirm: password === confirm ? null : "Enter the same password in both fields.",
+    };
+    setErrors(next);
+    if (next.password) {
       Alert.alert("Password too short", "Use at least 8 characters.");
       return;
     }
-    if (password !== confirm) {
+    if (next.confirm) {
       Alert.alert("Passwords don't match", "Enter the same password in both fields.");
       return;
     }
@@ -40,14 +47,45 @@ export default function ResetPassword() {
 
   return (
     <Screen>
-      <Text onPress={() => router.replace("/auth?mode=signin")} style={{ color: colors.primary, fontWeight: "700", paddingVertical: 6 }}>‹  Back to sign in</Text>
-      <View style={{ paddingTop: 18, gap: 14 }}>
+      <BackLink label="Back to sign in" onPress={() => router.replace("/auth?mode=signin")} />
+      <View style={{ gap: 16 }}>
+        <IconBadge icon="lock-closed-outline" size={52} />
         <Heading title="Choose a new password" subtitle="Your reset link is validated securely by the server." />
-        <Card style={{ gap: 12 }}>
-          {!token ? <Text style={{ color: "#B45309" }}>This link is missing its token. Request a new password-reset email.</Text> : null}
-          <TextInput value={password} onChangeText={setPassword} placeholder="New password (at least 8 characters)" placeholderTextColor="#8993A1" secureTextEntry autoComplete="new-password" style={{ backgroundColor: "#F3F5F8", borderRadius: 15, paddingHorizontal: 16, paddingVertical: 15, color: colors.ink, fontSize: 14 }} />
-          <TextInput value={confirm} onChangeText={setConfirm} placeholder="Confirm new password" placeholderTextColor="#8993A1" secureTextEntry autoComplete="new-password" style={{ backgroundColor: "#F3F5F8", borderRadius: 15, paddingHorizontal: 16, paddingVertical: 15, color: colors.ink, fontSize: 14 }} />
-          <Button title={busy ? "Updating…" : "Update password"} onPress={submit} disabled={busy || !token} />
+        <Card>
+          {!token ? (
+            <View accessibilityRole="alert" style={{ flexDirection: "row", gap: 10, backgroundColor: colors.warningBg, padding: 12, borderRadius: 14 }}>
+              <Ionicons name="warning-outline" size={20} color={colors.warning} />
+              <Text style={{ color: colors.warning, flex: 1, lineHeight: 19, fontSize: 13, fontWeight: "600" }}>This link is missing its token. Request a new password-reset email.</Text>
+            </View>
+          ) : null}
+          <Field
+            label="New password"
+            icon="lock-closed-outline"
+            value={password}
+            onChangeText={(v) => { setPassword(v); if (errors.password) setErrors((e) => ({ ...e, password: null })); }}
+            placeholder="At least 8 characters"
+            secureTextEntry
+            autoComplete="new-password"
+            textContentType="newPassword"
+            returnKeyType="next"
+            error={errors.password}
+            editable={!busy}
+          />
+          <Field
+            label="Confirm new password"
+            icon="lock-closed-outline"
+            value={confirm}
+            onChangeText={(v) => { setConfirm(v); if (errors.confirm) setErrors((e) => ({ ...e, confirm: null })); }}
+            placeholder="Re-enter your password"
+            secureTextEntry
+            autoComplete="new-password"
+            textContentType="newPassword"
+            returnKeyType="go"
+            onSubmitEditing={() => void submit()}
+            error={errors.confirm}
+            editable={!busy}
+          />
+          <Button title={busy ? "Updating…" : "Update password"} loading={busy} onPress={() => void submit()} disabled={!token} />
         </Card>
       </View>
     </Screen>
