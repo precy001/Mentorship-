@@ -7,6 +7,7 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { AdminService } from './admin.service';
 import { AcceptCounsellorInvitationDto, AccountStatusDto, CounsellorAvailabilityDto, CounsellorInvitationDto, ResourceDto, ScholarshipDto, TopicActiveDto, TopicAssignmentDto, TopicDto, UserRoleDto } from './admin.dto';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { LgaActiveDto, RenameLgaDto, ServiceAreaActiveDto, ServiceAreaDto } from '../service-areas/service-areas.dto';
 import { MAX_IMAGE_BYTES } from '../storage/image-validation';
 
 type UploadedImage = { buffer: Buffer; mimetype: string; size: number };
@@ -30,6 +31,14 @@ export class AdminController {
     if (!file) throw new BadRequestException('Choose an image to upload.');
     return this.admin.uploadContentImage(actor.id, file);
   }
+  @Get('service-areas') serviceAreas() { return this.admin.listServiceAreas(); }
+  @Post('service-areas') createServiceArea(@CurrentUser() actor: AuthenticatedUser, @Body() dto: ServiceAreaDto) { return this.admin.createServiceArea(actor.id, dto); }
+  // Static LGA routes are declared before the :id routes so "lga" is never read as an id.
+  @Patch('service-areas/lga/active') setLgaActive(@CurrentUser() actor: AuthenticatedUser, @Body() dto: LgaActiveDto) { return this.admin.setLgaActive(actor.id, dto.state, dto.lga, dto.isActive); }
+  @Put('service-areas/lga') renameLga(@CurrentUser() actor: AuthenticatedUser, @Body() dto: RenameLgaDto) { return this.admin.renameLga(actor.id, dto.state, dto.lga, dto.newLga); }
+  @Put('service-areas/:id') updateServiceArea(@CurrentUser() actor: AuthenticatedUser, @Param('id') id: string, @Body() dto: ServiceAreaDto) { return this.admin.updateServiceArea(actor.id, id, dto); }
+  @Patch('service-areas/:id/active') serviceAreaActive(@CurrentUser() actor: AuthenticatedUser, @Param('id') id: string, @Body() dto: ServiceAreaActiveDto) { return this.admin.setServiceAreaActive(actor.id, id, dto.isActive); }
+  @Delete('service-areas/:id') deleteServiceArea(@CurrentUser() actor: AuthenticatedUser, @Param('id') id: string) { return this.admin.deleteServiceArea(actor.id, id); }
   @Get('resources') resources() { return this.admin.listResources(); }
   @Post('resources') createResource(@CurrentUser() actor: AuthenticatedUser, @Body() dto: ResourceDto) { return this.admin.createResource(actor.id, dto); }
   @Put('resources/:id') updateResource(@CurrentUser() actor: AuthenticatedUser, @Param('id') id: string, @Body() dto: ResourceDto) { return this.admin.updateResource(actor.id, id, dto); }
@@ -40,8 +49,6 @@ export class AdminController {
   @Put('scholarships/:id') updateScholarship(@CurrentUser() actor: AuthenticatedUser, @Param('id') id: string, @Body() dto: ScholarshipDto) { return this.admin.updateScholarship(actor.id, id, dto); }
   @Delete('scholarships/:id') deleteScholarship(@CurrentUser() actor: AuthenticatedUser, @Param('id') id: string) { return this.admin.deleteScholarship(actor.id, id); }
   @Patch('scholarships/:id/active') scholarshipActive(@CurrentUser() actor: AuthenticatedUser, @Param('id') id: string, @Body() body: TopicActiveDto) { return this.admin.setScholarshipActive(actor.id, id, body.isActive); }
-  @Get('service-areas') serviceAreas() { return this.admin.listServiceAreas(); }
-  @Patch('service-areas/:id/active') serviceAreaActive(@CurrentUser() actor: AuthenticatedUser, @Param('id') id: string, @Body() body: TopicActiveDto) { return this.admin.setServiceAreaActive(actor.id, id, body.isActive); }
   @Get('appointments') appointments() { return this.admin.listAppointments(); }
   @Get('audit-logs') auditLogs() { return this.admin.listAuditLogs(); }
   @Get('discussions/unassigned') unassignedDiscussions() { return this.admin.listUnassignedDiscussions(); }

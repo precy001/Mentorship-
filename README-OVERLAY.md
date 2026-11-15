@@ -1,39 +1,21 @@
-# Mentorship+ UI/UX overlay: how to apply
+# Applying `mentorship-plus-service-areas-fix.zip`
 
-This ZIP contains only new and modified files, at their exact project-relative paths. It touches `app/` and `src/` only (23 files). No backend, database, config or dependency changes, so no `npm install` is needed.
+1. **Back up** `C:\Users\Anita Nwaobi\Documents\Projects\mentorship-plus` (copy the folder, or commit to git).
+2. **Extract** the ZIP into the `mentorship-plus` folder and choose *Replace the files in the destination*. Only the files in `CHANGELOG.md` are touched. No `.env` files or `node_modules` are included. No new dependencies.
+3. **Apply the migration (this restores the areas).** From the project root, with `api/.env` pointing at the database you want to fix:
+   ```
+   npm run api:db:generate
+   npm run api:db:migrate
+   ```
+   Do this for **production too**: run `npx prisma migrate deploy` with the production `DATABASE_URL` (or make sure your Render start/build step runs it). It only inserts missing rows; it never deletes data, never overwrites rows that exist, and can be run any number of times. `npm run api:db:seed` is optional and equally repeatable.
+4. **Validate:**
+   ```
+   npx tsc --noEmit
+   npm run api:build
+   npm run api:test
+   npm run api:db:validate
+   ```
+5. **Deploy** the API, then publish the app (no native change, so an OTA update is enough).
+6. **Check:** open registration, pick an LGA, confirm only its LCDAs appear. In Admin → Platform → LGA/LCDA access management, disable an LCDA and reopen the LCDA list in registration; it is gone.
 
-## 1. Back up
-From the project root (`C:\Users\Anita Nwaobi\Documents\Projects\mentorship-plus`):
-
-```powershell
-git status                      # commit or stash anything pending
-git checkout -b uiux-upgrade    # recommended: work on a branch
-```
-No git? Copy the `app` and `src` folders somewhere safe first.
-
-## 2. Extract
-Extract `mentorship-plus-uiux-updates.zip` **into the project root** and choose "Replace" when prompted. Or:
-
-```powershell
-Expand-Archive -Path .\mentorship-plus-uiux-updates.zip -DestinationPath . -Force
-```
-You should see `CHANGELOG.md` and `README-OVERLAY.md` appear in the root. They are documentation and can be deleted.
-
-## 3. Validate
-```powershell
-npx tsc --noEmit
-node --test src/lib/validation.test.ts
-npx expo start -c
-```
-Backend commands (`npm run api:build`, `npm run api:test`) are not affected.
-
-## 4. Manual checks (not possible to run in the build environment)
-- Sign in as **member, counsellor, admin and super admin**: each lands on the right dashboard.
-- Register end to end: LGA, then LCDA, then profile (use the date-of-birth year picker), then email verification.
-- Student: save and unsave an item, complete a goal, book and cancel an appointment, start a discussion, send a message, close it and rate it.
-- Counsellor: switch availability, confirm / complete / no-show an appointment, reply in a discussion.
-- Admin: switch every tab; create, edit, unpublish and delete a resource and a scholarship (including image upload); moderate a rating; auto-assign a discussion; invite a counsellor.
-- Check on a small phone, a notched phone and a tablet or the web build. Turn on large system text and a screen reader (TalkBack / VoiceOver) once.
-
-## Roll back
-`git checkout -- app src` (or restore your backup copy), then delete `src/lib/format.ts`.
+Note: `20261113120000_phase5_activity_records` and `20261113130000_phase5_admin_platform` both create the same tables. An existing database is unaffected, but a brand-new empty database would fail at the second one. I did not edit applied migrations; see the notes in the delivery message.

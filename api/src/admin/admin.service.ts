@@ -6,11 +6,12 @@ import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { ConfigService } from '@nestjs/config';
 import { MailService } from '../mail/mail.service';
 import { StorageService, type UploadableImage } from '../storage/storage.service';
+import { ServiceAreasService } from '../service-areas/service-areas.service';
 import { CONTENT_IMAGE_FOLDER } from '../content/content.constants';
 
 @Injectable()
 export class AdminService {
-  constructor(private readonly prisma: PrismaService, private readonly mail: MailService, private readonly config: ConfigService, private readonly storage: StorageService) {}
+  constructor(private readonly prisma: PrismaService, private readonly mail: MailService, private readonly config: ConfigService, private readonly storage: StorageService, private readonly serviceAreas: ServiceAreasService) {}
 
   async listResources(includeInactive = true) {
     return this.prisma.resource.findMany({ where: includeInactive ? {} : { isActive: true }, orderBy: { createdAt: 'desc' } });
@@ -108,12 +109,36 @@ export class AdminService {
     await this.audit(actorId, isActive ? 'SCHOLARSHIP_PUBLISHED' : 'SCHOLARSHIP_UNPUBLISHED', 'Scholarship', id);
     return scholarship;
   }
-  async listServiceAreas() { return this.prisma.serviceArea.findMany({ orderBy: [{ state: 'asc' }, { lga: 'asc' }, { lcda: 'asc' }] }); }
+  async listServiceAreas() { return this.serviceAreas.listAll(); }
+  async createServiceArea(actorId: string, input: { state: string; lga: string; lcda: string }) {
+    const area = await this.serviceAreas.create(input);
+    await this.audit(actorId, 'SERVICE_AREA_CREATED', 'ServiceArea', area.id, { lga: area.lga, lcda: area.lcda });
+    return area;
+  }
+  async updateServiceArea(actorId: string, id: string, input: { state: string; lga: string; lcda: string }) {
+    const area = await this.serviceAreas.update(id, input);
+    await this.audit(actorId, 'SERVICE_AREA_UPDATED', 'ServiceArea', id, { lga: area.lga, lcda: area.lcda });
+    return area;
+  }
   async setServiceAreaActive(actorId: string, id: string, isActive: boolean) {
-    const area = await this.prisma.serviceArea.update({ where: { id }, data: { isActive } }).catch(() => null);
-    if (!area) throw new NotFoundException('Service area not found.');
+    const area = await this.serviceAreas.setActive(id, isActive);
     await this.audit(actorId, isActive ? 'SERVICE_AREA_ENABLED' : 'SERVICE_AREA_DISABLED', 'ServiceArea', id);
     return area;
+  }
+  async setLgaActive(actorId: string, state: string, lga: string, isActive: boolean) {
+    const result = await this.serviceAreas.setLgaActive(state, lga, isActive);
+    await this.audit(actorId, isActive ? 'LGA_ENABLED' : 'LGA_DISABLED', 'ServiceArea', null, { state, lga, updated: result.updated });
+    return result;
+  }
+  async renameLga(actorId: string, state: string, lga: string, newLga: string) {
+    const result = await this.serviceAreas.renameLga(state, lga, newLga);
+    await this.audit(actorId, 'LGA_RENAMED', 'ServiceArea', null, { state, from: lga, to: newLga, updated: result.updated });
+    return result;
+  }
+  async deleteServiceArea(actorId: string, id: string) {
+    const result = await this.serviceAreas.remove(id);
+    await this.audit(actorId, 'SERVICE_AREA_DELETED', 'ServiceArea', id);
+    return result;
   }
 
   async dashboard() {

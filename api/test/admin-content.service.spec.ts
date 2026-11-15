@@ -18,7 +18,7 @@ function build() {
     isManagedUrl: jest.fn((url: string, folder: string) => url.startsWith(`${BASE}/${folder}/`)),
     deleteByUrl: jest.fn(async (_url: string | null | undefined) => undefined),
   };
-  const service = new AdminService(prisma as never, {} as never, {} as never, storage as never);
+  const service = new AdminService(prisma as never, {} as never, {} as never, storage as never, {} as never);
   return { service, prisma, storage };
 }
 

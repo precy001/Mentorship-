@@ -14,7 +14,7 @@ import {
   apiAdminCreateScholarship, apiAdminCreateTopic, apiAdminDashboard, apiAdminDeleteResource, apiAdminDeleteScholarship,
   apiAdminInviteCounsellor, apiAdminModerateRating, apiAdminPendingRatings, apiAdminResources, apiAdminScholarships,
   apiAdminServiceAreas, apiAdminSetAccountStatus, apiAdminSetCounsellorAvailability, apiAdminSetResourceActive,
-  apiAdminSetRole, apiAdminSetScholarshipActive, apiAdminSetServiceAreaActive, apiAdminSetTopicActive, apiAdminTopics,
+  apiAdminSetRole, apiAdminSetScholarshipActive, apiAdminSetServiceAreaActive, apiAdminCreateServiceArea, apiAdminUpdateServiceArea, apiAdminDeleteServiceArea, apiAdminSetLgaActive, apiAdminRenameLga, apiAdminSetTopicActive, apiAdminTopics,
   apiAdminUnassignedDiscussions, apiAdminUpdateResource, apiAdminUpdateScholarship, apiAdminUploadContentImage, apiAdminUsers,
 } from "@/src/lib/api";
 import { confirmAction, errorMessage, isSessionExpired, useToast } from "@/src/lib/feedback";
@@ -29,6 +29,8 @@ type FormErrors = Record<string, string | null>;
 type AdminSection = "overview" | "accounts" | "counselling" | "resources" | "scholarships" | "platform";
 type Success = { title: string; message: string; toast?: boolean };
 const emptyResource = { title: "", category: "", minutes: "5", description: "" };
+const NEW_LGA = "__new__";
+const emptyArea = { state: "Lagos", lga: "", newLga: "", lcda: "" };
 const emptyScholarship = { title: "", provider: "", level: "", deadline: "", eligibility: "", description: "" };
 
 export default function AdminDashboard() {
@@ -44,6 +46,13 @@ export default function AdminDashboard() {
   const [resources, setResources] = useState<AdminResource[]>([]);
   const [scholarships, setScholarships] = useState<AdminScholarship[]>([]);
   const [serviceAreas, setServiceAreas] = useState<ServiceAreaRecord[]>([]);
+  const [areaForm, setAreaForm] = useState(emptyArea);
+  const [areaErrors, setAreaErrors] = useState<FormErrors>({});
+  const [editingArea, setEditingArea] = useState<ServiceAreaRecord | null>(null);
+  const [renamingLga, setRenamingLga] = useState<{ state: string; lga: string } | null>(null);
+  const [areaSearch, setAreaSearch] = useState("");
+  const [openLgas, setOpenLgas] = useState<Record<string, boolean>>({});
+  const areaFormY = useRef(0);
   const [pendingRatings, setPendingRatings] = useState<PendingRating[]>([]);
   const [unassignedDiscussions, setUnassignedDiscussions] = useState<UnassignedDiscussion[]>([]);
   const [appointments, setAppointments] = useState<AdminAppointment[]>([]);
@@ -245,9 +254,66 @@ export default function AdminDashboard() {
   };
 
   const toggleServiceArea = async (area: ServiceAreaRecord) => {
-    if (area.isActive && !(await confirmAction({ title: "Disable service area", message: `${area.lcda} will no longer be offered during registration.`, confirmText: "Disable", destructive: true }))) return;
-    await perform(`area-${area.id}`, "Service area update failed", () => apiAdminSetServiceAreaActive(area.id, !area.isActive), { title: "", message: `${area.lcda} ${area.isActive ? "disabled" : "enabled"}.`, toast: true });
+    if (area.isActive && !(await confirmAction({ title: "Disable LCDA", message: `${area.lcda} (${area.lga}) will no longer be offered during registration. Existing members are not affected.`, confirmText: "Disable", destructive: true }))) return;
+    await perform(`area-${area.id}`, "Service area update failed", () => apiAdminSetServiceAreaActive(area.id, !area.isActive), { title: "", message: `${area.lcda} ${area.isActive ? "disabled" : "enabled"}. Registration reflects this now.`, toast: true });
   };
+
+  const toggleLga = async (state: string, lga: string, enable: boolean) => {
+    if (!enable && !(await confirmAction({ title: "Disable LGA", message: `All LCDAs in ${lga} will be hidden from registration. Existing members are not affected.`, confirmText: "Disable all", destructive: true }))) return;
+    await perform(`lga-${state}-${lga}`, "LGA update failed", () => apiAdminSetLgaActive(state, lga, enable), { title: "", message: `${lga} ${enable ? "enabled" : "disabled"}. Registration reflects this now.`, toast: true });
+  };
+
+  const resetAreaForm = () => { setAreaForm(emptyArea); setAreaErrors({}); setEditingArea(null); setRenamingLga(null); };
+  const scrollToAreaForm = () => scrollRef.current?.scrollTo({ y: Math.max(areaFormY.current - 12, 0), animated: true });
+
+  const editArea = (area: ServiceAreaRecord) => {
+    if (anyBusy) return;
+    setRenamingLga(null); setEditingArea(area); setAreaErrors({});
+    setAreaForm({ state: area.state, lga: area.lga, newLga: "", lcda: area.lcda });
+    scrollToAreaForm();
+  };
+
+  const startRenameLga = (state: string, lga: string) => {
+    if (anyBusy) return;
+    setEditingArea(null); setAreaErrors({}); setRenamingLga({ state, lga });
+    setAreaForm({ ...emptyArea, state, lga, newLga: lga });
+    scrollToAreaForm();
+  };
+
+  const submitArea = async () => {
+    const f = areaForm;
+    const taken = (name: string) => serviceAreas.some((a) => a.state === f.state && a.lga.trim().toLowerCase() === name.trim().toLowerCase());
+    if (renamingLga) {
+      const sameName = f.newLga.trim().toLowerCase() === renamingLga.lga.toLowerCase();
+      const errors: FormErrors = { newLga: validateLength(f.newLga, "LGA name", { min: 2, max: 100 }) ?? (!sameName && taken(f.newLga) ? "An LGA with this name already exists." : null) };
+      setAreaErrors(errors);
+      if (hasErrors(errors)) return showToast("Please fix the highlighted fields.", "error");
+      const ok = await perform("area-save", "LGA not renamed", () => apiAdminRenameLga(renamingLga.state, renamingLga.lga, f.newLga.trim()), { title: "LGA renamed", message: `${renamingLga.lga} is now ${f.newLga.trim()} everywhere, including registration.` });
+      if (ok) resetAreaForm();
+      return;
+    }
+    const lga = f.lga === NEW_LGA ? f.newLga.trim() : f.lga;
+    const errors: FormErrors = {
+      state: validateChoice(f.state, "State"),
+      lga: f.lga ? null : "Select an LGA, or choose “Add a new LGA”.",
+      newLga: f.lga === NEW_LGA ? (validateLength(f.newLga, "LGA name", { min: 2, max: 100 }) ?? (taken(f.newLga) ? "An LGA with this name already exists. Select it from the list." : null)) : null,
+      lcda: validateLength(f.lcda, "LCDA name", { min: 2, max: 120 }),
+    };
+    setAreaErrors(errors);
+    if (hasErrors(errors)) return showToast("Please fix the highlighted fields.", "error");
+    const input = { state: f.state, lga, lcda: f.lcda.trim() };
+    const editing = editingArea;
+    const ok = await perform("area-save", editing ? "LCDA not updated" : "LCDA not added", () => (editing ? apiAdminUpdateServiceArea(editing.id, input) : apiAdminCreateServiceArea(input)),
+      editing ? { title: "LCDA updated", message: `${input.lcda} (${input.lga}) was saved. Registration reflects this now.` } : { title: "LCDA added", message: `${input.lcda} is now available under ${input.lga} in registration.` });
+    if (ok) resetAreaForm();
+  };
+
+  const deleteArea = async (area: ServiceAreaRecord) => {
+    if (!(await confirmAction({ title: "Delete LCDA", message: `Permanently delete ${area.lcda} (${area.lga})? This cannot be undone. Members who already registered with it keep their saved details.`, confirmText: "Delete", destructive: true }))) return;
+    const ok = await perform(`area-del-${area.id}`, "LCDA not deleted", () => apiAdminDeleteServiceArea(area.id), { title: "LCDA deleted", message: `${area.lcda} was removed.` });
+    if (ok && editingArea?.id === area.id) resetAreaForm();
+  };
+
 
   /* ---------------------------------------------------------------- resources */
   const resetResourceForm = () => {
@@ -690,21 +756,76 @@ export default function AdminDashboard() {
 
         {section === "platform" ? <>
         {/* ------------------------------------------------ service areas */}
-        {h("LGA / LCDA access management", `Control which Lagos service areas are available during registration · ${serviceAreas.length} areas.`)}
-        {visibleItems("serviceAreas", serviceAreas).map((area) => (
-          <Card key={area.id} style={adminCardStyle}>
-            <Row style={{ justifyContent: "space-between" }}>
-              <View style={{ flex: 1, gap: 3 }}>
-                <Text style={{ color: colors.ink, fontWeight: "800" }}>{area.lga}</Text>
-                <Text style={{ color: colors.muted, fontSize: 12 }}>{area.lcda} · {area.state}</Text>
-              </View>
-              <Pill label={area.isActive ? "Available" : "Disabled"} tone={area.isActive ? "green" : "red"} />
-            </Row>
-            <Button size="sm" title={area.isActive ? "Disable area" : "Enable area"} variant="secondary" loading={isBusy(`area-${area.id}`)} disabled={anyBusy} onPress={() => void toggleServiceArea(area)} />
+        {h("LGA / LCDA access management", `The database is the single source of truth: changes here appear in registration immediately · ${new Set(serviceAreas.map((a) => `${a.state}::${a.lga}`)).size} LGAs, ${serviceAreas.length} LCDAs.`)}
+        <View onLayout={(event: LayoutChangeEvent) => { areaFormY.current = event.nativeEvent.layout.y; }}>
+          <Card style={adminCardStyle}>
+            {title(renamingLga ? "Rename LGA" : editingArea ? "Edit LCDA" : "Add an LCDA", renamingLga ? `Renaming ${renamingLga.lga}. Every LCDA in it moves to the new name.` : editingArea ? `Editing ${editingArea.lcda}.` : "Add an LCDA to an existing LGA, or create a new LGA. Fields marked * are required.")}
+            {renamingLga ? (
+              <Field label="New LGA name" value={areaForm.newLga} onChangeText={(v) => { setAreaForm((f) => ({ ...f, newLga: v })); setAreaErrors((e) => ({ ...e, newLga: null })); }} placeholder="LGA name" required maxLength={100} error={areaErrors.newLga} editable={!anyBusy} />
+            ) : (
+              <>
+                <SelectField label="State" value={areaForm.state} options={toOptions(Array.from(new Set(["Lagos", ...serviceAreas.map((a) => a.state)])))} onChange={(v) => setAreaForm((f) => ({ ...f, state: v, lga: "" }))} required error={areaErrors.state} disabled={anyBusy} />
+                <SelectField label="LGA" value={areaForm.lga} options={[...toOptions(Array.from(new Set(serviceAreas.filter((a) => a.state === areaForm.state).map((a) => a.lga)))), { label: "+ Add a new LGA", value: NEW_LGA }]} onChange={(v) => { setAreaForm((f) => ({ ...f, lga: v })); setAreaErrors((e) => ({ ...e, lga: null })); }} placeholder="Select an LGA" required error={areaErrors.lga} disabled={anyBusy} />
+                {areaForm.lga === NEW_LGA ? <Field label="New LGA name" value={areaForm.newLga} onChangeText={(v) => { setAreaForm((f) => ({ ...f, newLga: v })); setAreaErrors((e) => ({ ...e, newLga: null })); }} placeholder="e.g. Ikeja" required maxLength={100} error={areaErrors.newLga} editable={!anyBusy} /> : null}
+                <Field label="LCDA name" value={areaForm.lcda} onChangeText={(v) => { setAreaForm((f) => ({ ...f, lcda: v })); setAreaErrors((e) => ({ ...e, lcda: null })); }} placeholder="e.g. Ojodu LCDA" required maxLength={120} error={areaErrors.lcda} editable={!anyBusy} />
+              </>
+            )}
+            <Button title={isBusy("area-save") ? "Saving…" : renamingLga ? "Rename LGA" : editingArea ? "Save changes" : "Add LCDA"} loading={isBusy("area-save")} disabled={anyBusy} onPress={() => void submitArea()} />
+            {renamingLga || editingArea ? <Button title="Cancel" variant="ghost" disabled={anyBusy} onPress={resetAreaForm} /> : null}
           </Card>
-        ))}
-        {renderSectionToggle("serviceAreas", serviceAreas.length)}
-        {!serviceAreas.length && !loading ? emptyCard("No service areas are configured.") : null}
+        </View>
+        {serviceAreas.length > 8 ? <Field label="Find an LGA or LCDA" value={areaSearch} onChangeText={setAreaSearch} placeholder="Search" optional autoCapitalize="none" autoCorrect={false} /> : null}
+        {(() => {
+          const term = areaSearch.trim().toLowerCase();
+          const groups = new Map<string, { state: string; lga: string; items: ServiceAreaRecord[] }>();
+          for (const area of serviceAreas) {
+            const key = `${area.state}::${area.lga}`;
+            const group = groups.get(key) ?? { state: area.state, lga: area.lga, items: [] };
+            group.items.push(area);
+            groups.set(key, group);
+          }
+          const list = [...groups.values()].filter((g) => !term || g.lga.toLowerCase().includes(term) || g.items.some((i) => i.lcda.toLowerCase().includes(term)));
+          return <>
+            {visibleItems("serviceAreas", list).map((group) => {
+              const key = `${group.state}::${group.lga}`;
+              const enabled = group.items.filter((i) => i.isActive).length;
+              const open = !!openLgas[key] || !!term;
+              return (
+                <Card key={key} style={adminCardStyle}>
+                  <Row style={{ justifyContent: "space-between" }}>
+                    <View style={{ flex: 1, gap: 3 }}>
+                      <Text style={{ color: colors.ink, fontWeight: "800" }}>{group.lga}</Text>
+                      <Text style={{ color: colors.muted, fontSize: 12 }}>{group.state} · {enabled} of {group.items.length} LCDAs enabled</Text>
+                    </View>
+                    <Pill label={enabled === 0 ? "Disabled" : enabled === group.items.length ? "Available" : "Partly available"} tone={enabled === 0 ? "red" : enabled === group.items.length ? "green" : "amber"} />
+                  </Row>
+                  <Row style={{ flexWrap: "wrap", gap: 8 }}>
+                    <Button size="sm" title={open ? "Hide LCDAs" : "Show LCDAs"} variant="secondary" disabled={anyBusy} onPress={() => setOpenLgas((c) => ({ ...c, [key]: !c[key] }))} />
+                    {enabled < group.items.length ? <Button size="sm" title="Enable all" variant="secondary" loading={isBusy(`lga-${group.state}-${group.lga}`)} disabled={anyBusy} onPress={() => void toggleLga(group.state, group.lga, true)} /> : null}
+                    {enabled > 0 ? <Button size="sm" title="Disable all" variant="secondary" loading={isBusy(`lga-${group.state}-${group.lga}`)} disabled={anyBusy} onPress={() => void toggleLga(group.state, group.lga, false)} /> : null}
+                    <Button size="sm" title="Rename LGA" variant="secondary" disabled={anyBusy} onPress={() => startRenameLga(group.state, group.lga)} />
+                  </Row>
+                  {open ? group.items.filter((i) => !term || group.lga.toLowerCase().includes(term) || i.lcda.toLowerCase().includes(term)).map((area) => (
+                    <View key={area.id} style={{ gap: 8, paddingTop: 10, borderTopWidth: 1, borderTopColor: "#EEF2F6" }}>
+                      <Row style={{ justifyContent: "space-between" }}>
+                        <Text style={{ color: colors.ink, fontWeight: "700", flex: 1 }}>{area.lcda}</Text>
+                        <Pill label={area.isActive ? "Available" : "Disabled"} tone={area.isActive ? "green" : "red"} />
+                      </Row>
+                      <Row style={{ flexWrap: "wrap", gap: 8 }}>
+                        <Button size="sm" title="Edit" variant="secondary" disabled={anyBusy} onPress={() => editArea(area)} />
+                        <Button size="sm" title={area.isActive ? "Disable" : "Enable"} variant="secondary" loading={isBusy(`area-${area.id}`)} disabled={anyBusy} onPress={() => void toggleServiceArea(area)} />
+                        {!area.isActive ? <Button size="sm" title="Delete" variant="danger" loading={isBusy(`area-del-${area.id}`)} disabled={anyBusy} onPress={() => void deleteArea(area)} /> : null}
+                      </Row>
+                    </View>
+                  )) : null}
+                </Card>
+              );
+            })}
+            {renderSectionToggle("serviceAreas", list.length)}
+            {term && !list.length ? emptyCard(`Nothing matches “${areaSearch.trim()}”.`) : null}
+          </>;
+        })()}
+        {!serviceAreas.length && !loading ? emptyCard("No service areas are configured. Add the first LCDA above.") : null}
 
 
         {/* ------------------------------------------------ audit */}

@@ -1,58 +1,78 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useMemo, useRef, useState } from "react";
 import { Alert, Pressable, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import { Screen, Button, Card, BackLink, Heading, StepProgress, ErrorState, LoadingBlock, EmptyState, SearchField } from "@/src/components/UI";
 import { colors } from "@/src/lib/theme";
 import { pluralize } from "@/src/lib/format";
-import { apiGetLocations } from "@/src/lib/api";
+import { apiGetServiceLcdas, apiGetServiceLgas } from "@/src/lib/api";
 
-type LocationGroup = { state: string; lga: string; lcs: string[] };
+type LgaOption = { state: string; lga: string; lcdaCount: number };
 
 export default function RegisterLga() {
-  const [locations, setLocations] = useState<LocationGroup[]>([]);
-  const [loadingLocations, setLoadingLocations] = useState(true);
-  const [locationError, setLocationError] = useState("");
+  const [lgas, setLgas] = useState<LgaOption[]>([]);
+  const [loadingLgas, setLoadingLgas] = useState(true);
+  const [lgaError, setLgaError] = useState("");
   const [search, setSearch] = useState("");
-
-  const loadLocations = useCallback(async () => {
-    setLoadingLocations(true);
-    try {
-      const result = await apiGetLocations();
-      const groups = new Map<string, LocationGroup>();
-      for (const item of result.locations) {
-        const key = `${item.state}::${item.lga}`;
-        const group = groups.get(key) || { state: item.state, lga: item.lga, lcs: [] };
-        group.lcs.push(item.lcda);
-        groups.set(key, group);
-      }
-      setLocations([...groups.values()]);
-      setLocationError("");
-    } catch (error) {
-      setLocationError(error instanceof Error ? error.message : "Service areas could not be loaded.");
-    } finally {
-      setLoadingLocations(false);
-    }
-  }, []);
-
-  useEffect(() => { void loadLocations(); }, [loadLocations]);
 
   const [selectedLga, setSelectedLga] = useState<string | null>(null);
   const [selectedLcda, setSelectedLcda] = useState<string | null>(null);
   const [confirmed, setConfirmed] = useState(false);
+  const [lcdas, setLcdas] = useState<string[]>([]);
+  const [loadingLcdas, setLoadingLcdas] = useState(false);
+  const [lcdaError, setLcdaError] = useState("");
+  // Only the most recent LCDA request may update the screen (a slow earlier tap must not overwrite it).
+  const lcdaRequest = useRef(0);
 
-  const chosen = useMemo(
-    () => locations.find((item) => item.lga === selectedLga) ?? null,
-    [locations, selectedLga],
-  );
-  const validLcda = Boolean(chosen && selectedLcda && chosen.lcs.includes(selectedLcda));
+  const loadLgas = useCallback(async () => {
+    setLoadingLgas(true);
+    try {
+      const result = await apiGetServiceLgas();
+      setLgas(result.lgas);
+      setLgaError("");
+      // An administrator may have disabled the LGA the person already picked.
+      setSelectedLga((current) => (current && result.lgas.some((item) => item.lga === current) ? current : null));
+    } catch (error) {
+      setLgaError(error instanceof Error ? error.message : "Service areas could not be loaded.");
+    } finally {
+      setLoadingLgas(false);
+    }
+  }, []);
+
+  const loadLcdas = useCallback(async (item: LgaOption) => {
+    const request = ++lcdaRequest.current;
+    setLoadingLcdas(true);
+    setLcdaError("");
+    try {
+      const result = await apiGetServiceLcdas(item.state, item.lga);
+      if (request !== lcdaRequest.current) return;
+      const names = result.lcdas.map((area) => area.lcda);
+      setLcdas(names);
+      setSelectedLcda((current) => (current && names.includes(current) ? current : null));
+    } catch (error) {
+      if (request !== lcdaRequest.current) return;
+      setLcdas([]);
+      setLcdaError(error instanceof Error ? error.message : "LCDAs could not be loaded.");
+    } finally {
+      if (request === lcdaRequest.current) setLoadingLcdas(false);
+    }
+  }, []);
+
+  // Fetch whenever the screen is shown, so admin changes appear without rebuilding or reinstalling the app.
+  useFocusEffect(useCallback(() => { void loadLgas(); }, [loadLgas]));
+
+  const chosen = useMemo(() => lgas.find((item) => item.lga === selectedLga) ?? null, [lgas, selectedLga]);
+  const validLcda = Boolean(chosen && selectedLcda && lcdas.includes(selectedLcda));
   const term = search.trim().toLowerCase();
-  const visible = term ? locations.filter((item) => `${item.lga} ${item.state}`.toLowerCase().includes(term)) : locations;
+  const visible = term ? lgas.filter((item) => `${item.lga} ${item.state}`.toLowerCase().includes(term)) : lgas;
 
-  const chooseLga = (lga: string) => {
-    setSelectedLga(lga);
+  const chooseLga = (item: LgaOption) => {
+    if (selectedLga === item.lga) return;
+    setSelectedLga(item.lga);
     setSelectedLcda(null);
+    setLcdas([]);
     setConfirmed(false);
+    void loadLcdas(item);
   };
 
   const chooseLcda = (lcda: string) => {
@@ -80,7 +100,6 @@ export default function RegisterLga() {
     });
   };
 
-
   return (
     <Screen>
       <BackLink />
@@ -90,15 +109,15 @@ export default function RegisterLga() {
         subtitle="Choose your Local Government Area (LGA), then the LCDA that applies to you. You’ll complete your profile next."
       />
 
-      {loadingLocations ? <LoadingBlock label="Loading available service areas…" /> : null}
-      {!!locationError && !loadingLocations ? (
-        <ErrorState title="Locations unavailable" message={locationError} onRetry={() => void loadLocations()} />
+      {loadingLgas && !lgas.length ? <LoadingBlock label="Loading available service areas…" /> : null}
+      {!!lgaError && !loadingLgas ? (
+        <ErrorState title="Locations unavailable" message={lgaError} onRetry={() => void loadLgas()} />
       ) : null}
-      {!loadingLocations && !locationError && !locations.length ? (
+      {!loadingLgas && !lgaError && !lgas.length ? (
         <EmptyState icon="location-outline" title="No areas available yet" message="No registration areas are currently enabled. Please contact Mentorship+ support." />
       ) : null}
 
-      {locations.length > 8 ? <SearchField value={search} onChangeText={setSearch} placeholder="Search your LGA" accessibilityLabel="Search LGAs" /> : null}
+      {lgas.length > 8 ? <SearchField value={search} onChangeText={setSearch} placeholder="Search your LGA" accessibilityLabel="Search LGAs" /> : null}
 
       <View style={{ gap: 10 }}>
         {visible.map((item) => {
@@ -115,15 +134,15 @@ export default function RegisterLga() {
               }}
             >
               <Pressable
-                onPress={() => chooseLga(item.lga)}
+                onPress={() => chooseLga(item)}
                 accessibilityRole="radio"
-                accessibilityLabel={`${item.lga}, ${item.state} State, ${pluralize(item.lcs.length, "LCDA option")}`}
+                accessibilityLabel={`${item.lga}, ${item.state} State, ${pluralize(item.lcdaCount, "LCDA option")}`}
                 accessibilityState={{ selected: active, checked: active }}
                 style={({ pressed }) => ({ minHeight: 64, padding: 15, flexDirection: "row", alignItems: "center", gap: 12, opacity: pressed ? 0.88 : 1 })}
               >
                 <View style={{ flex: 1, gap: 3 }}>
                   <Text style={{ color: colors.ink, fontSize: 15, fontWeight: "800" }}>{item.lga}</Text>
-                  <Text style={{ color: colors.muted, fontSize: 12 }}>{item.state} State · {pluralize(item.lcs.length, "LCDA option")}</Text>
+                  <Text style={{ color: colors.muted, fontSize: 12 }}>{item.state} State · {pluralize(item.lcdaCount, "LCDA option")}</Text>
                 </View>
                 <View style={{ width: 24, height: 24, borderRadius: 12, borderWidth: 1.5, borderColor: active ? colors.primary : "#CBD5E1", backgroundColor: active ? colors.primary : "transparent", alignItems: "center", justifyContent: "center" }}>
                   {active ? <Ionicons name="checkmark" size={14} color={colors.white} /> : null}
@@ -133,7 +152,12 @@ export default function RegisterLga() {
               {active ? (
                 <View style={{ paddingHorizontal: 12, paddingBottom: 12, gap: 6 }}>
                   <Text style={{ color: colors.ink, fontWeight: "800", fontSize: 13, paddingHorizontal: 4, paddingTop: 4 }}>Select your LCDA</Text>
-                  {item.lcs.map((lcda) => {
+                  {loadingLcdas ? <LoadingBlock label="Loading LCDAs…" /> : null}
+                  {!!lcdaError && !loadingLcdas ? <ErrorState title="LCDAs unavailable" message={lcdaError} onRetry={() => void loadLcdas(item)} /> : null}
+                  {!loadingLcdas && !lcdaError && !lcdas.length ? (
+                    <EmptyState icon="location-outline" title="No LCDAs available" message="This LGA has no enabled LCDAs right now. Choose another LGA or try again shortly." actionLabel="Refresh" onAction={() => void loadLgas().then(() => loadLcdas(item))} />
+                  ) : null}
+                  {!loadingLcdas && !lcdaError ? lcdas.map((lcda) => {
                     const picked = selectedLcda === lcda;
                     return (
                       <Pressable
@@ -148,7 +172,7 @@ export default function RegisterLga() {
                         {picked ? <Ionicons name="checkmark-circle" size={20} color={colors.primary} /> : null}
                       </Pressable>
                     );
-                  })}
+                  }) : null}
                   <Pressable
                     onPress={() => setConfirmed((value) => !value)}
                     accessibilityRole="checkbox"
@@ -165,12 +189,12 @@ export default function RegisterLga() {
             </View>
           );
         })}
-        {!!term && !visible.length && locations.length ? (
+        {!!term && !visible.length && lgas.length ? (
           <Card><Text style={{ color: colors.muted, textAlign: "center" }}>No LGA matches “{search.trim()}”.</Text></Card>
         ) : null}
       </View>
 
-      <Button title="Continue to profile" onPress={continueNext} disabled={loadingLocations || !!locationError || !locations.length} />
+      <Button title="Continue to profile" onPress={continueNext} disabled={loadingLgas || !!lgaError || !lgas.length || loadingLcdas} />
       <Text style={{ color: colors.muted, textAlign: "center", fontSize: 12, lineHeight: 17 }}>
         Location availability will be expanded before nationwide launch.
       </Text>

@@ -6,10 +6,12 @@ import { AuthService } from './auth.service';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { RolesGuard } from './guards/roles.guard';
 import { MailModule } from '../mail/mail.module';
+import { ServiceAreasModule } from '../service-areas/service-areas.module';
 
 @Module({
   imports: [
     MailModule,
+    ServiceAreasModule,
     JwtModule.registerAsync({
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({

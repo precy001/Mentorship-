@@ -8,8 +8,8 @@ export class RegisterDto {
   @IsString() @MinLength(1) subcategoryId!: string;
   @IsOptional() @IsString() @MaxLength(32) @Matches(/^\+?[\d\s\-()]{10,24}$/, { message: 'Enter a valid phone number, for example +2348012345678.' }) phoneNumber?: string;
   @IsOptional() @IsDateString() dateOfBirth?: string;
-  @IsOptional() @IsString() @MaxLength(100) stateOfResidence?: string;
-  @IsOptional() @IsString() @MaxLength(100) lga?: string;
-  @IsOptional() @IsString() @MaxLength(120) lcda?: string;
+  @IsString({ message: 'Choose your state.' }) @MinLength(1, { message: 'Choose your state.' }) @MaxLength(100) stateOfResidence!: string;
+  @IsString({ message: 'Choose your LGA.' }) @MinLength(1, { message: 'Choose your LGA.' }) @MaxLength(100) lga!: string;
+  @IsString({ message: 'Choose your LCDA.' }) @MinLength(1, { message: 'Choose your LCDA.' }) @MaxLength(120) lcda!: string;
   @IsOptional() @IsString() @MaxLength(180) school?: string;
 }

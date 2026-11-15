@@ -12,6 +12,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../prisma/prisma.service';
 import { MailService } from '../mail/mail.service';
+import { ServiceAreasService } from '../service-areas/service-areas.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { ForgotPasswordDto, ResetPasswordDto, VerifyEmailDto } from './dto/token.dto';
@@ -44,6 +45,7 @@ export class AuthService {
     private readonly jwt: JwtService,
     private readonly config: ConfigService,
     private readonly mail: MailService,
+    private readonly serviceAreas: ServiceAreasService,
   ) {}
 
   async register(dto: RegisterDto): Promise<{ message: string }> {
@@ -51,11 +53,8 @@ export class AuthService {
     const existing = await this.prisma.user.findUnique({ where: { email }, select: { id: true } });
     if (existing) throw new ConflictException('An account with this email already exists.');
 
-    if (dto.stateOfResidence || dto.lga || dto.lcda) {
-      if (!dto.stateOfResidence?.trim() || !dto.lga?.trim() || !dto.lcda?.trim()) throw new BadRequestException('Choose a state, LGA and LCDA from the available service areas.');
-      const serviceArea = await this.prisma.serviceArea.findFirst({ where: { state: dto.stateOfResidence.trim(), lga: dto.lga.trim(), lcda: dto.lcda.trim(), isActive: true }, select: { id: true } });
-      if (!serviceArea) throw new BadRequestException('This registration area is currently unavailable. Choose an enabled LGA and LCDA.');
-    }
+    // The selected area must exist and be enabled right now; the stored (canonical) values are saved.
+    const area = await this.serviceAreas.resolveActiveArea(dto.stateOfResidence, dto.lga, dto.lcda);
 
     const category = await this.prisma.membershipCategory.findFirst({ where: { id: dto.categoryId, isActive: true }, select: { id: true } });
     const subcategory = await this.prisma.membershipSubcategory.findFirst({ where: { id: dto.subcategoryId, categoryId: dto.categoryId, isActive: true }, select: { id: true } });
@@ -74,8 +73,8 @@ export class AuthService {
           subcategoryId: dto.subcategoryId,
           phoneNumber: dto.phoneNumber?.trim(),
           dateOfBirth: dto.dateOfBirth ? new Date(dto.dateOfBirth) : undefined,
-          stateOfResidence: dto.stateOfResidence?.trim(),
-          profileData: { lga: dto.lga?.trim() || null, lcda: dto.lcda?.trim() || null, school: dto.school?.trim() || null },
+          stateOfResidence: area.state,
+          profileData: { lga: area.lga, lcda: area.lcda, school: dto.school?.trim() || null },
         } },
       },
       select: { id: true, email: true },

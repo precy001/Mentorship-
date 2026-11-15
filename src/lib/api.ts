@@ -505,6 +505,18 @@ export const apiAdminDeleteScholarship = (id: string) => apiRequest<{ success: b
 export const apiAdminSetScholarshipActive = (id: string, isActive: boolean) => apiRequest<AdminScholarship>(`/admin/scholarships/${encodeURIComponent(id)}/active`, { method: "PATCH", body: JSON.stringify({ isActive }) }, true);
 export const apiAdminServiceAreas = () => apiRequest<ServiceAreaRecord[]>("/admin/service-areas", {}, true);
 export const apiAdminSetServiceAreaActive = (id: string, isActive: boolean) => apiRequest<ServiceAreaRecord>(`/admin/service-areas/${encodeURIComponent(id)}/active`, { method: "PATCH", body: JSON.stringify({ isActive }) }, true);
+export type ServiceAreaInput = { state: string; lga: string; lcda: string };
+export const apiAdminCreateServiceArea = (input: ServiceAreaInput) => apiRequest<ServiceAreaRecord>("/admin/service-areas", { method: "POST", body: JSON.stringify(input) }, true);
+export const apiAdminUpdateServiceArea = (id: string, input: ServiceAreaInput) => apiRequest<ServiceAreaRecord>(`/admin/service-areas/${encodeURIComponent(id)}`, { method: "PUT", body: JSON.stringify(input) }, true);
+export const apiAdminDeleteServiceArea = (id: string) => apiRequest<{ success: boolean }>(`/admin/service-areas/${encodeURIComponent(id)}`, { method: "DELETE" }, true);
+export const apiAdminSetLgaActive = (state: string, lga: string, isActive: boolean) => apiRequest<{ updated: number }>("/admin/service-areas/lga/active", { method: "PATCH", body: JSON.stringify({ state, lga, isActive }) }, true);
+export const apiAdminRenameLga = (state: string, lga: string, newLga: string) => apiRequest<{ updated: number }>("/admin/service-areas/lga", { method: "PUT", body: JSON.stringify({ state, lga, newLga }) }, true);
+/** Registration: active LGAs (each with at least one active LCDA). */
+export type ActiveLga = { state: string; lga: string; lcdaCount: number };
+export const apiGetServiceLgas = () => apiRequest<{ lgas: ActiveLga[] }>("/membership/lgas");
+/** Registration: only the active LCDAs that belong to the chosen LGA. */
+export type ActiveLcda = { id: string; state: string; lga: string; lcda: string };
+export const apiGetServiceLcdas = (state: string, lga: string) => apiRequest<{ lcdas: ActiveLcda[] }>(`/membership/lcdas?state=${encodeURIComponent(state)}&lga=${encodeURIComponent(lga)}`);
 export const apiGetLocations = () => apiRequest<{ locations: Omit<ServiceAreaRecord, "isActive">[] }>("/membership/locations");
 export const apiGetPublicResources = () => apiRequest<PublicResource[]>("/content/resources");
 export const apiGetPublicScholarships = () => apiRequest<PublicScholarship[]>("/content/scholarships");

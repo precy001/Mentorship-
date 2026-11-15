@@ -1,0 +1,40 @@
+/**
+ * Lagos State LGA / LCDA pairings (the original service-area list, based on the LASIEC listing).
+ * Single source for prisma/seed.ts and for the restore migration
+ * 20261114120000_restore_service_areas. Keep the migration's INSERT rows in sync with this list;
+ * api/test/service-areas.data.spec.ts fails if they drift apart.
+ */
+export type ServiceAreaSeed = readonly [state: string, lga: string, lcda: string];
+
+export const SERVICE_AREAS: readonly ServiceAreaSeed[] = [
+  ['Lagos', 'Agege', 'Orile Agege LCDA'],
+  ['Lagos', 'Ajeromi-Ifelodun', 'Ifelodun LCDA'],
+  ['Lagos', 'Alimosho', 'Agbado-Oke Odo LCDA'], ['Lagos', 'Alimosho', 'Ayobo-Ipaja LCDA'], ['Lagos', 'Alimosho', 'Egbe-Idimu LCDA'], ['Lagos', 'Alimosho', 'Mosan-Okunola LCDA'], ['Lagos', 'Alimosho', 'Igando-Ikotun LCDA'],
+  ['Lagos', 'Amuwo-Odofin', 'Oriade LCDA'],
+  ['Lagos', 'Apapa', 'Apapa Iganmu LCDA'],
+  ['Lagos', 'Badagry', 'Olorunda LCDA'], ['Lagos', 'Badagry', 'Badagry West LCDA'],
+  ['Lagos', 'Epe', 'Eredo LCDA'], ['Lagos', 'Epe', 'Ikosi-Ejirin LCDA'],
+  ['Lagos', 'Eti-Osa', 'Ikoyi-Obalende LCDA'], ['Lagos', 'Eti-Osa', 'Iru/Victoria Island LCDA'],
+  ['Lagos', 'Ibeju-Lekki', 'Lekki LCDA'],
+  ['Lagos', 'Ifako-Ijaiye', 'Ojokoro LCDA'],
+  ['Lagos', 'Ikeja', 'Onigbongbo LCDA'], ['Lagos', 'Ikeja', 'Ojodu LCDA'],
+  ['Lagos', 'Ikorodu', 'Igbogbo-Baiyeku LCDA'], ['Lagos', 'Ikorodu', 'Ijede LCDA'], ['Lagos', 'Ikorodu', 'Imota LCDA'], ['Lagos', 'Ikorodu', 'Ikorodu North LCDA'], ['Lagos', 'Ikorodu', 'Ikorodu West LCDA'],
+  ['Lagos', 'Kosofe', 'Agboyi-Ketu LCDA'], ['Lagos', 'Kosofe', 'Ikosi-Isheri LCDA'],
+  ['Lagos', 'Lagos Island', 'Lagos Island East LCDA'],
+  ['Lagos', 'Lagos Mainland', 'Yaba LCDA'],
+  ['Lagos', 'Mushin', 'Odi-Olowo/Ojuwoye LCDA'],
+  ['Lagos', 'Ojo', 'Iba LCDA'], ['Lagos', 'Ojo', 'Oto-Awori LCDA'],
+  ['Lagos', 'Oshodi-Isolo', 'Ejigbo LCDA'], ['Lagos', 'Oshodi-Isolo', 'Isolo LCDA'],
+  ['Lagos', 'Shomolu', 'Bariga LCDA'],
+  ['Lagos', 'Surulere', 'Coker-Aguda LCDA'], ['Lagos', 'Surulere', 'Itire-Ikate LCDA'],
+  ['Lagos', 'Other / not listed', 'Other LCDA'],
+];
+
+/**
+ * Two options from the earlier static list that were grouped under the wrong LGA.
+ * They are retired (isActive=false), never deleted.
+ */
+export const RETIRED_SERVICE_AREAS: readonly ServiceAreaSeed[] = [
+  ['Lagos', 'Eti-Osa', 'Lekki LCDA'],
+  ['Lagos', 'Lagos Mainland', 'Odi-Olowo/Ojuwoye LCDA'],
+];
