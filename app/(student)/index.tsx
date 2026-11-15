@@ -3,6 +3,7 @@ import { Alert, Text, View, Pressable } from "react-native";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Screen, Heading, Card, Row, Pill } from "@/src/components/UI";
+import { FeaturedBanner, ResourceCard, ScholarshipCard } from "@/src/components/ContentCards";
 import { colors } from "@/src/lib/theme";
 import { useApp } from "@/src/context/AppContext";
 
@@ -80,16 +81,23 @@ export default function StudentHome() {
       </Card>
 
       <Heading title={isEducation ? "Learning opportunities" : isCareer ? "Career and business growth" : "Recommended for you"} small subtitle={`Selected for ${focusLabel.toLowerCase()}.`} />
-      {(isEducation || !isCareer ? app.resources.slice(0, 2) : []).map(r => (
-        <Pressable key={r.id} onPress={() => go("resources")}>
-          <Card>
-            <Pill label={r.category} />
-            <Text style={{ color: colors.ink, fontSize: 17, fontWeight: "800", letterSpacing: -0.2 }}>{r.title}</Text>
-            <Text style={{ color: colors.muted, lineHeight: 21 }}>{r.description}</Text>
-            <Row style={{ justifyContent: "space-between" }}><Text style={{ color: colors.muted, fontSize: 12 }}>{r.readTime}</Text><Ionicons name="arrow-forward-circle-outline" size={22} color={colors.primary} /></Row>
-          </Card>
-        </Pressable>
-      ))}
+      {(() => {
+        const shown = isEducation || !isCareer ? app.resources : app.resources.filter(r => /career|business/i.test(r.category));
+        const featured = shown.find(r => r.imageUrl) ?? null;
+        const rest = shown.filter(r => r.id !== featured?.id).slice(0, 2);
+        return <>
+          {featured ? <FeaturedBanner eyebrow={featured.category} title={featured.title} subtitle={featured.readTime} imageUrl={featured.imageUrl} onPress={() => go("resources")} /> : null}
+          {(featured ? rest : shown.slice(0, 2)).map(r => <ResourceCard key={r.id} item={r} onPress={() => go("resources")} />)}
+          {!shown.length ? <Card><Text style={{ color: colors.muted }}>New resources will appear here when administrators publish them.</Text></Card> : null}
+        </>;
+      })()}
+      {isEducation && app.scholarships.length > 0 && <>
+        <Row style={{ justifyContent: "space-between" }}>
+          <Heading title="Scholarships closing soon" small />
+          <Pressable accessibilityRole="button" onPress={() => go("scholarships")}><Text style={{ color: colors.primary, fontWeight: "800", fontSize: 12 }}>See all</Text></Pressable>
+        </Row>
+        {[...app.scholarships].sort((a, b) => new Date(a.deadline).getTime() - new Date(b.deadline).getTime()).slice(0, 2).map(sch => <ScholarshipCard key={sch.id} item={sch} onPress={() => go("scholarships")} />)}
+      </>}
       {app.bookings.filter(b => ["requested", "confirmed", "rescheduled"].includes(b.status) && new Date(b.startsAt).getTime() > Date.now()).length > 0 && (
         <Card>
           <Heading title="Upcoming appointments" small />

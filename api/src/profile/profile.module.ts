@@ -1,11 +1,12 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
+import { StorageModule } from '../storage/storage.module';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { ProfileController } from './profile.controller';
 import { ProfileService } from './profile.service';
 
 @Module({
-  imports: [AuthModule],
+  imports: [AuthModule, StorageModule],
   controllers: [ProfileController],
   providers: [ProfileService, JwtAuthGuard],
 })

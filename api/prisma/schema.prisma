@@ -351,6 +351,7 @@ model Resource {
   category    String   @db.VarChar(100)
   readTime    String   @default("5 min read") @db.VarChar(40)
   description String   @db.VarChar(2000)
+  imageUrl    String?  @db.VarChar(2048)
   isActive    Boolean  @default(true)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -365,6 +366,7 @@ model Scholarship {
   deadline    DateTime
   eligibility String   @db.VarChar(2000)
   description String   @db.VarChar(2000)
+  imageUrl    String?  @db.VarChar(2048)
   isActive    Boolean  @default(true)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt

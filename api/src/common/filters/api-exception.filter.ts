@@ -18,7 +18,8 @@ export class ApiExceptionFilter implements ExceptionFilter {
     if (isHttp && status < 500) {
       const payload = exception.getResponse();
       const raw = typeof payload === 'string' ? payload : (payload as { message?: unknown }).message;
-      message = Array.isArray(raw) ? raw.map(String).join(' ') : typeof raw === 'string' ? raw : message;
+      message = Array.isArray(raw) ? raw.map(String).join('\n') : typeof raw === 'string' ? raw : message;
+      if (status === HttpStatus.PAYLOAD_TOO_LARGE) message = 'The uploaded file is too large. Images must be 5 MB or smaller.';
     }
     response.status(status).json({ statusCode: status, message, error: message, timestamp: new Date().toISOString(), path: request.path });
   }

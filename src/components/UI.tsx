@@ -1,10 +1,14 @@
 import React from "react";
 import {
+  ActivityIndicator,
+  KeyboardTypeOptions,
+  Platform,
   View,
   Text,
   Pressable,
   TextInput,
   StyleSheet,
+  TextInputProps,
   ViewStyle,
   ScrollView,
 } from "react-native";
@@ -14,16 +18,22 @@ export function Screen({
   children,
   scroll = true,
   style,
+  scrollRef,
 }: {
   children: React.ReactNode;
   scroll?: boolean;
   style?: ViewStyle;
+  /** Lets a screen scroll to a section (for example, to an edit form). */
+  scrollRef?: React.Ref<ScrollView>;
 }) {
   return scroll ? (
     <ScrollView
+      ref={scrollRef}
       style={styles.scroll}
       contentContainerStyle={[styles.screen, style]}
       keyboardShouldPersistTaps="handled"
+      keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
+      automaticallyAdjustKeyboardInsets
       showsVerticalScrollIndicator={false}
     >
       {children}
@@ -61,18 +71,25 @@ export function Button({
   onPress,
   variant = "primary",
   disabled = false,
+  loading = false,
+  accessibilityLabel,
 }: {
   title: string;
   onPress: () => void;
   variant?: "primary" | "secondary" | "ghost" | "danger";
   disabled?: boolean;
+  /** Shows a spinner and blocks further presses while a request is running. */
+  loading?: boolean;
+  accessibilityLabel?: string;
 }) {
+  const inactive = disabled || loading;
   return (
     <Pressable
       accessibilityRole="button"
-      onPress={onPress}
-      disabled={disabled}
-      accessibilityState={{ disabled }}
+      accessibilityLabel={accessibilityLabel ?? title}
+      onPress={inactive ? undefined : onPress}
+      disabled={inactive}
+      accessibilityState={{ disabled: inactive, busy: loading }}
       android_ripple={{
         color: variant === "primary" || variant === "danger" ? "rgba(255,255,255,0.16)" : "rgba(41,55,245,0.08)",
         borderless: false,
@@ -83,19 +100,27 @@ export function Button({
         variant === "secondary" && styles.secondary,
         variant === "ghost" && styles.ghost,
         variant === "danger" && styles.danger,
-        disabled && styles.disabled,
-        pressed && !disabled && styles.pressed,
+        inactive && styles.disabled,
+        pressed && !inactive && styles.pressed,
       ]}
     >
-      <Text
-        style={[
-          styles.buttonText,
-          variant === "secondary" && styles.secondaryText,
-          variant === "ghost" && styles.ghostText,
-        ]}
-      >
-        {title}
-      </Text>
+      <View style={styles.buttonContent}>
+        {loading ? (
+          <ActivityIndicator
+            size="small"
+            color={variant === "primary" || variant === "danger" ? colors.white : colors.primary}
+          />
+        ) : null}
+        <Text
+          style={[
+            styles.buttonText,
+            variant === "secondary" && styles.secondaryText,
+            variant === "ghost" && styles.ghostText,
+          ]}
+        >
+          {title}
+        </Text>
+      </View>
     </Pressable>
   );
 }
@@ -108,29 +133,78 @@ export function Field({
   secureTextEntry,
   keyboardType,
   multiline,
+  error,
+  required,
+  optional,
+  helper,
+  maxLength,
+  autoCapitalize,
+  autoCorrect,
+  autoComplete,
+  textContentType,
+  editable = true,
+  onBlur,
+  returnKeyType,
 }: {
   label: string;
   value: string;
   onChangeText: (v: string) => void;
   placeholder?: string;
   secureTextEntry?: boolean;
-  keyboardType?: any;
+  keyboardType?: KeyboardTypeOptions;
   multiline?: boolean;
+  /** Validation message shown directly under the field. */
+  error?: string | null;
+  required?: boolean;
+  /** Marks the field "(optional)" so people know they may skip it. */
+  optional?: boolean;
+  helper?: string;
+  maxLength?: number;
+  autoCapitalize?: TextInputProps["autoCapitalize"];
+  autoCorrect?: boolean;
+  autoComplete?: TextInputProps["autoComplete"];
+  textContentType?: TextInputProps["textContentType"];
+  editable?: boolean;
+  onBlur?: () => void;
+  returnKeyType?: TextInputProps["returnKeyType"];
 }) {
   return (
     <View style={styles.fieldWrap}>
-      <Text style={styles.label}>{label}</Text>
+      <Text style={styles.label}>
+        {label}
+        {required ? <Text style={styles.required}> *</Text> : null}
+        {optional ? <Text style={styles.optional}> (optional)</Text> : null}
+      </Text>
       <TextInput
         value={value}
         onChangeText={onChangeText}
+        onBlur={onBlur}
         placeholder={placeholder}
         placeholderTextColor={colors.mutedLight}
         secureTextEntry={secureTextEntry}
         keyboardType={keyboardType}
         multiline={multiline}
-        accessibilityLabel={label}
-        style={[styles.input, multiline && styles.multiline]}
+        maxLength={maxLength}
+        editable={editable}
+        autoCapitalize={autoCapitalize}
+        autoCorrect={autoCorrect}
+        autoComplete={autoComplete}
+        textContentType={textContentType}
+        returnKeyType={returnKeyType}
+        accessibilityLabel={`${label}${required ? ", required" : optional ? ", optional" : ""}`}
+        accessibilityHint={error ?? helper}
+        style={[styles.input, multiline && styles.multiline, !!error && styles.inputError, !editable && styles.inputDisabled]}
       />
+      {error ? (
+        <Text accessibilityLiveRegion="polite" style={styles.errorText}>
+          {error}
+        </Text>
+      ) : helper || (maxLength && multiline) ? (
+        <Text style={styles.helperText}>
+          {helper ?? ""}
+          {maxLength && multiline ? `${helper ? "  ·  " : ""}${value.length}/${maxLength}` : ""}
+        </Text>
+      ) : null}
     </View>
   );
 }
@@ -206,6 +280,7 @@ export const styles = StyleSheet.create({
   secondary: { backgroundColor: "#EEF0FF", borderWidth: 1, borderColor: "#DCE1FF" },
   ghost: { backgroundColor: "transparent", borderWidth: 1, borderColor: colors.line },
   danger: { backgroundColor: colors.error },
+  buttonContent: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 9 },
   buttonText: { color: colors.white, fontWeight: "800", fontSize: 14, letterSpacing: 0.2 },
   secondaryText: { color: colors.primaryDark },
   ghostText: { color: colors.ink },
@@ -225,6 +300,12 @@ export const styles = StyleSheet.create({
     color: colors.ink,
   },
   multiline: { minHeight: 100, textAlignVertical: "top" },
+  inputError: { borderColor: colors.error, backgroundColor: "#FFF8F8" },
+  inputDisabled: { opacity: 0.6 },
+  required: { color: colors.error, fontWeight: "800" },
+  optional: { color: colors.muted, fontWeight: "500" },
+  errorText: { color: colors.error, fontSize: 12, lineHeight: 17, fontWeight: "600" },
+  helperText: { color: colors.muted, fontSize: 12, lineHeight: 17 },
   pill: { alignSelf: "flex-start", paddingHorizontal: 12, paddingVertical: 7, borderRadius: radii.pill },
   pillText: { fontSize: 11, fontWeight: "700", letterSpacing: 0.15 },
   row: { flexDirection: "row", alignItems: "center", gap: 10 },

@@ -1,4 +1,4 @@
-import { IsDateString, IsEmail, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import { IsDateString, IsEmail, IsOptional, IsString, Matches, MaxLength, MinLength } from 'class-validator';
 
 export class RegisterDto {
   @IsEmail() @MaxLength(320) email!: string;
@@ -6,7 +6,7 @@ export class RegisterDto {
   @IsString() @MinLength(2) @MaxLength(160) displayName!: string;
   @IsString() @MinLength(1) categoryId!: string;
   @IsString() @MinLength(1) subcategoryId!: string;
-  @IsOptional() @IsString() @MaxLength(32) phoneNumber?: string;
+  @IsOptional() @IsString() @MaxLength(32) @Matches(/^\+?[\d\s\-()]{10,24}$/, { message: 'Enter a valid phone number, for example +2348012345678.' }) phoneNumber?: string;
   @IsOptional() @IsDateString() dateOfBirth?: string;
   @IsOptional() @IsString() @MaxLength(100) stateOfResidence?: string;
   @IsOptional() @IsString() @MaxLength(100) lga?: string;

@@ -5,18 +5,56 @@ import type { AuthenticatedUser } from '../auth/decorators/current-user.decorato
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { ConfigService } from '@nestjs/config';
 import { MailService } from '../mail/mail.service';
+import { StorageService, type UploadableImage } from '../storage/storage.service';
+import { CONTENT_IMAGE_FOLDER } from '../content/content.constants';
 
 @Injectable()
 export class AdminService {
-  constructor(private readonly prisma: PrismaService, private readonly mail: MailService, private readonly config: ConfigService) {}
+  constructor(private readonly prisma: PrismaService, private readonly mail: MailService, private readonly config: ConfigService, private readonly storage: StorageService) {}
 
   async listResources(includeInactive = true) {
     return this.prisma.resource.findMany({ where: includeInactive ? {} : { isActive: true }, orderBy: { createdAt: 'desc' } });
   }
-  async createResource(actorId: string, input: { title: string; category: string; readTime?: string; description: string }) {
-    const resource = await this.prisma.resource.create({ data: { title: input.title.trim(), category: input.category.trim(), readTime: input.readTime?.trim() || '5 min read', description: input.description.trim() } });
+  async uploadContentImage(actorId: string, file: UploadableImage) {
+    const { url } = await this.storage.uploadImage(CONTENT_IMAGE_FOLDER, file, 'Image uploads are not configured on the server. Contact the platform owner.');
+    await this.audit(actorId, 'CONTENT_IMAGE_UPLOADED', 'ContentImage', null, { url });
+    return { imageUrl: url };
+  }
+
+  /** Accepts only images uploaded through uploadContentImage(); returns null for "no image". */
+  private managedImageUrl(value: string | null | undefined): string | null {
+    const url = typeof value === 'string' ? value.trim() : '';
+    if (!url) return null;
+    if (!this.storage.isManagedUrl(url, CONTENT_IMAGE_FOLDER)) throw new BadRequestException('The image must be uploaded through Mentorship+ before it can be attached.');
+    return url;
+  }
+
+  async createResource(actorId: string, input: { title: string; category: string; readTime?: string; description: string; imageUrl?: string | null }) {
+    const imageUrl = this.managedImageUrl(input.imageUrl);
+    const resource = await this.prisma.resource.create({ data: { title: input.title.trim(), category: input.category.trim(), readTime: input.readTime?.trim() || '5 min read', description: input.description.trim(), imageUrl } });
     await this.audit(actorId, 'RESOURCE_CREATED', 'Resource', resource.id);
     return resource;
+  }
+  async updateResource(actorId: string, id: string, input: { title: string; category: string; readTime?: string; description: string; imageUrl?: string | null }) {
+    const existing = await this.prisma.resource.findUnique({ where: { id }, select: { id: true, imageUrl: true } });
+    if (!existing) throw new NotFoundException('Resource not found.');
+    const imageUrl = input.imageUrl === undefined ? undefined : this.managedImageUrl(input.imageUrl);
+    const resource = await this.prisma.resource.update({ where: { id }, data: {
+      title: input.title.trim(), category: input.category.trim(), description: input.description.trim(),
+      ...(input.readTime?.trim() ? { readTime: input.readTime.trim() } : {}),
+      ...(imageUrl !== undefined ? { imageUrl } : {}),
+    } });
+    await this.audit(actorId, 'RESOURCE_UPDATED', 'Resource', id);
+    if (imageUrl !== undefined && existing.imageUrl && existing.imageUrl !== imageUrl) void this.storage.deleteByUrl(existing.imageUrl);
+    return resource;
+  }
+  async deleteResource(actorId: string, id: string) {
+    const existing = await this.prisma.resource.findUnique({ where: { id }, select: { id: true, imageUrl: true } });
+    if (!existing) throw new NotFoundException('Resource not found.');
+    await this.prisma.resource.delete({ where: { id } });
+    await this.audit(actorId, 'RESOURCE_DELETED', 'Resource', id);
+    void this.storage.deleteByUrl(existing.imageUrl);
+    return { success: true };
   }
   async setResourceActive(actorId: string, id: string, isActive: boolean) {
     const resource = await this.prisma.resource.update({ where: { id }, data: { isActive } }).catch(() => null);
@@ -27,12 +65,42 @@ export class AdminService {
   async listScholarships(includeInactive = true) {
     return this.prisma.scholarship.findMany({ where: includeInactive ? {} : { isActive: true }, orderBy: { deadline: 'asc' } });
   }
-  async createScholarship(actorId: string, input: { title: string; provider: string; level: string; deadline: string; eligibility: string; description: string }) {
-    const deadline = new Date(input.deadline);
+  private parseDeadline(value: string): Date {
+    const deadline = new Date(value);
     if (!Number.isFinite(deadline.getTime())) throw new BadRequestException('Enter a valid scholarship deadline.');
-    const scholarship = await this.prisma.scholarship.create({ data: { title: input.title.trim(), provider: input.provider.trim(), level: input.level.trim(), deadline, eligibility: input.eligibility.trim(), description: input.description.trim() } });
+    return deadline;
+  }
+  async createScholarship(actorId: string, input: { title: string; provider: string; level: string; deadline: string; eligibility: string; description: string; imageUrl?: string | null }) {
+    const deadline = this.parseDeadline(input.deadline);
+    if (deadline.getTime() <= Date.now()) throw new BadRequestException('The scholarship deadline must be in the future.');
+    const imageUrl = this.managedImageUrl(input.imageUrl);
+    const scholarship = await this.prisma.scholarship.create({ data: { title: input.title.trim(), provider: input.provider.trim(), level: input.level.trim(), deadline, eligibility: input.eligibility.trim(), description: input.description.trim(), imageUrl } });
     await this.audit(actorId, 'SCHOLARSHIP_CREATED', 'Scholarship', scholarship.id);
     return scholarship;
+  }
+  async updateScholarship(actorId: string, id: string, input: { title: string; provider: string; level: string; deadline: string; eligibility: string; description: string; imageUrl?: string | null }) {
+    const existing = await this.prisma.scholarship.findUnique({ where: { id }, select: { id: true, deadline: true, imageUrl: true } });
+    if (!existing) throw new NotFoundException('Scholarship not found.');
+    const deadline = this.parseDeadline(input.deadline);
+    // An already-expired listing can still be corrected; only a *changed* deadline must lie in the future.
+    if (deadline.getTime() !== existing.deadline.getTime() && deadline.getTime() <= Date.now()) throw new BadRequestException('The scholarship deadline must be in the future.');
+    const imageUrl = input.imageUrl === undefined ? undefined : this.managedImageUrl(input.imageUrl);
+    const scholarship = await this.prisma.scholarship.update({ where: { id }, data: {
+      title: input.title.trim(), provider: input.provider.trim(), level: input.level.trim(), deadline,
+      eligibility: input.eligibility.trim(), description: input.description.trim(),
+      ...(imageUrl !== undefined ? { imageUrl } : {}),
+    } });
+    await this.audit(actorId, 'SCHOLARSHIP_UPDATED', 'Scholarship', id);
+    if (imageUrl !== undefined && existing.imageUrl && existing.imageUrl !== imageUrl) void this.storage.deleteByUrl(existing.imageUrl);
+    return scholarship;
+  }
+  async deleteScholarship(actorId: string, id: string) {
+    const existing = await this.prisma.scholarship.findUnique({ where: { id }, select: { id: true, imageUrl: true } });
+    if (!existing) throw new NotFoundException('Scholarship not found.');
+    await this.prisma.scholarship.delete({ where: { id } });
+    await this.audit(actorId, 'SCHOLARSHIP_DELETED', 'Scholarship', id);
+    void this.storage.deleteByUrl(existing.imageUrl);
+    return { success: true };
   }
   async setScholarshipActive(actorId: string, id: string, isActive: boolean) {
     const scholarship = await this.prisma.scholarship.update({ where: { id }, data: { isActive } }).catch(() => null);
@@ -275,7 +343,7 @@ export class AdminService {
     return updated;
   }
 
-  private async audit(actorId: string, action: string, entityType: string, entityId: string) {
-    await this.prisma.auditLog.create({ data: { actorId, action, entityType, entityId } });
+  private async audit(actorId: string, action: string, entityType: string, entityId: string | null, metadata: Prisma.InputJsonObject = {}) {
+    await this.prisma.auditLog.create({ data: { actorId, action, entityType, entityId, metadata } });
   }
 }

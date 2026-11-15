@@ -1,10 +1,14 @@
 import 'reflect-metadata';
-import { ValidationPipe } from '@nestjs/common';
+import { BadRequestException, ValidationError, ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
 import { ApiExceptionFilter } from './common/filters/api-exception.filter';
+
+function flattenValidationErrors(errors: ValidationError[]): string[] {
+  return errors.flatMap((error) => [...Object.values<string>(error.constraints ?? {}), ...flattenValidationErrors(error.children ?? [])]);
+}
 
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule, { bufferLogs: true });
@@ -33,7 +37,9 @@ async function bootstrap(): Promise<void> {
       forbidNonWhitelisted: true,
       transform: true,
       transformOptions: { enableImplicitConversion: false },
-      disableErrorMessages: config.get<string>('NODE_ENV') === 'production',
+      // Validation messages only name the offending field and rule. They must reach the app,
+      // otherwise production users only ever see a generic "Bad Request".
+      exceptionFactory: (errors: ValidationError[]) => new BadRequestException(flattenValidationErrors(errors)),
     }),
   );
   app.useGlobalFilters(new ApiExceptionFilter());

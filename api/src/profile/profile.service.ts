@@ -1,14 +1,12 @@
-import { BadRequestException, Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import { randomUUID } from 'node:crypto';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { StorageService } from '../storage/storage.service';
 
 type UploadedImage = { buffer: Buffer; mimetype: string };
 
 @Injectable()
 export class ProfileService {
-  private readonly logger = new Logger(ProfileService.name);
-  constructor(private readonly prisma: PrismaService, private readonly config: ConfigService) {}
+  constructor(private readonly prisma: PrismaService, private readonly storage: StorageService) {}
 
   async updateMembership(userId: string, categoryId: string, subcategoryId: string) {
     const subcategory = await this.prisma.membershipSubcategory.findFirst({
@@ -27,35 +25,8 @@ export class ProfileService {
   }
 
   async uploadAvatar(userId: string, file: UploadedImage): Promise<{ avatarUrl: string }> {
-    const supabaseUrl = this.config.get<string>('SUPABASE_URL')?.replace(/\/$/, '');
-    const serviceKey = this.config.get<string>('SUPABASE_SERVICE_ROLE_KEY');
-    const bucket = this.config.get<string>('SUPABASE_STORAGE_BUCKET') || 'profile-photos';
-    if (!supabaseUrl || !serviceKey) {
-      throw new ServiceUnavailableException('Profile picture uploads are not configured. Please contact support.');
-    }
-
-    const extension = file.mimetype === 'image/png' ? 'png' : file.mimetype === 'image/webp' ? 'webp' : 'jpg';
-    const objectPath = `${userId}/${randomUUID()}.${extension}`;
-    const uploadUrl = `${supabaseUrl}/storage/v1/object/${encodeURIComponent(bucket)}/${objectPath.split('/').map(encodeURIComponent).join('/')}`;
-    this.logger.log(`Supabase URL: ${supabaseUrl}`);
-    this.logger.log(`Storage bucket: ${bucket}`);
-    this.logger.log(`Storage upload URL: ${uploadUrl}`);
-    const uploaded = await fetch(uploadUrl, {
-      method: 'POST',
-      headers: {
-        apikey: serviceKey,
-        'Content-Type': file.mimetype,
-        'x-upsert': 'false',
-      },
-      body: new Uint8Array(file.buffer),
-    });
-    if (!uploaded.ok) {
-      const detail = await uploaded.text().catch(() => '');
-      this.logger.error(`Supabase Storage upload failed (${uploaded.status}): ${detail.slice(0, 500)}`);
-      throw new ServiceUnavailableException('Your profile picture could not be saved. Please try again later.');
-    }
-
-    const avatarUrl = `${supabaseUrl}/storage/v1/object/public/${encodeURIComponent(bucket)}/${objectPath.split('/').map(encodeURIComponent).join('/')}`;
+    // Shared storage integration: same bucket, URL format and validation as admin content images.
+    const { url: avatarUrl } = await this.storage.uploadImage(userId, file, 'Profile picture uploads are not configured. Please contact support.');
     await this.prisma.userProfile.upsert({
       where: { userId },
       create: { userId, avatarUrl },

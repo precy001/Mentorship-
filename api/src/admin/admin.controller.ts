@@ -1,4 +1,5 @@
-import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, Get, Param, Patch, Post, Put, Query, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { CounsellorAvailability, UserRole, UserStatus } from '@prisma/client';
 import { CurrentUser, type AuthenticatedUser } from '../auth/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -6,6 +7,9 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { AdminService } from './admin.service';
 import { AcceptCounsellorInvitationDto, AccountStatusDto, CounsellorAvailabilityDto, CounsellorInvitationDto, ResourceDto, ScholarshipDto, TopicActiveDto, TopicAssignmentDto, TopicDto, UserRoleDto } from './admin.dto';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { MAX_IMAGE_BYTES } from '../storage/image-validation';
+
+type UploadedImage = { buffer: Buffer; mimetype: string; size: number };
 
 @Controller('admin')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -20,11 +24,21 @@ export class AdminController {
   @Post('counsellors/invitations/accept')
   @Roles('MEMBER', 'COUNSELLOR')
   acceptCounsellorInvitation(@CurrentUser() user: AuthenticatedUser, @Body() body: AcceptCounsellorInvitationDto) { return this.admin.acceptCounsellorInvitation(user, body.token); }
+  @Post('uploads/content-image')
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: MAX_IMAGE_BYTES } }))
+  uploadContentImage(@CurrentUser() actor: AuthenticatedUser, @UploadedFile() file?: UploadedImage) {
+    if (!file) throw new BadRequestException('Choose an image to upload.');
+    return this.admin.uploadContentImage(actor.id, file);
+  }
   @Get('resources') resources() { return this.admin.listResources(); }
   @Post('resources') createResource(@CurrentUser() actor: AuthenticatedUser, @Body() dto: ResourceDto) { return this.admin.createResource(actor.id, dto); }
+  @Put('resources/:id') updateResource(@CurrentUser() actor: AuthenticatedUser, @Param('id') id: string, @Body() dto: ResourceDto) { return this.admin.updateResource(actor.id, id, dto); }
+  @Delete('resources/:id') deleteResource(@CurrentUser() actor: AuthenticatedUser, @Param('id') id: string) { return this.admin.deleteResource(actor.id, id); }
   @Patch('resources/:id/active') resourceActive(@CurrentUser() actor: AuthenticatedUser, @Param('id') id: string, @Body() body: TopicActiveDto) { return this.admin.setResourceActive(actor.id, id, body.isActive); }
   @Get('scholarships') scholarships() { return this.admin.listScholarships(); }
   @Post('scholarships') createScholarship(@CurrentUser() actor: AuthenticatedUser, @Body() dto: ScholarshipDto) { return this.admin.createScholarship(actor.id, dto); }
+  @Put('scholarships/:id') updateScholarship(@CurrentUser() actor: AuthenticatedUser, @Param('id') id: string, @Body() dto: ScholarshipDto) { return this.admin.updateScholarship(actor.id, id, dto); }
+  @Delete('scholarships/:id') deleteScholarship(@CurrentUser() actor: AuthenticatedUser, @Param('id') id: string) { return this.admin.deleteScholarship(actor.id, id); }
   @Patch('scholarships/:id/active') scholarshipActive(@CurrentUser() actor: AuthenticatedUser, @Param('id') id: string, @Body() body: TopicActiveDto) { return this.admin.setScholarshipActive(actor.id, id, body.isActive); }
   @Get('service-areas') serviceAreas() { return this.admin.listServiceAreas(); }
   @Patch('service-areas/:id/active') serviceAreaActive(@CurrentUser() actor: AuthenticatedUser, @Param('id') id: string, @Body() body: TopicActiveDto) { return this.admin.setServiceAreaActive(actor.id, id, body.isActive); }

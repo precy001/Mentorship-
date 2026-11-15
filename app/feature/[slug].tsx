@@ -2,6 +2,9 @@ import React, { useEffect, useState } from "react";
 import { Alert, Text, View, Pressable } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { Screen, Heading, Card, Button, Field, Pill, Row } from "@/src/components/UI";
+import { DatePickerField } from "@/src/components/Forms";
+import { ResourceCard, ScholarshipCard } from "@/src/components/ContentCards";
+import { toDateString } from "@/src/lib/validation";
 import { useApp } from "@/src/context/AppContext";
 import { colors } from "@/src/lib/theme";
 import { apiCreateActivity, apiListActivities, apiListNotifications, apiMarkNotificationRead, ActivityRecord, UserNotification, apiDiscussionTopics, apiListAppointments, apiCreateAppointment, apiUpdateAppointmentStatus, DiscussionTopic, AppointmentRecord, apiMyRatings, apiCreateRating, MyRating } from "@/src/lib/api";
@@ -49,7 +52,7 @@ export default function FeatureScreen() {
     {slug === "booking" && <>
       <Card><Heading title="Request a counselling session" small subtitle="Select a topic and a future time. A suitable counsellor will be assigned based on topic and availability." />
         {bookingTopics.map(item => <Pressable key={item.id} onPress={() => { setSelectedTopicId(item.id);  }} style={{ borderWidth: 1, borderColor: selectedTopicId === item.id ? colors.primary : colors.line, backgroundColor: selectedTopicId === item.id ? colors.softBlue : "#fff", borderRadius: 12, padding: 12, gap: 4 }}><Text style={{ color: colors.ink, fontWeight: "800" }}>{item.name}</Text>{item.description ? <Text style={{ color: colors.muted, fontSize: 12 }}>{item.description}</Text> : null}</Pressable>)}
-        <Field label="Date (YYYY-MM-DD)" value={date} onChangeText={setDate} placeholder="2026-11-20" /><Text style={{ color: colors.ink, fontWeight: "700" }}>Start time</Text><View style={{ flexDirection: "row", gap: 8 }}>{[{label:"10:00 AM",value:"10:00"},{label:"1:00 PM",value:"13:00"},{label:"3:30 PM",value:"15:30"}].map(t => <Pressable key={t.value} onPress={() => setTime(t.value)} style={{ flex: 1, padding: 10, borderRadius: 10, backgroundColor: time === t.value ? colors.primary : colors.softBlue, alignItems: "center" }}><Text style={{ color: time === t.value ? "#fff" : colors.ink, fontWeight: "700", fontSize: 11 }}>{t.label}</Text></Pressable>)}</View>
+        <DatePickerField label="Appointment date" value={date} onChange={setDate} minDate={toDateString(new Date())} maxDate={`${new Date().getFullYear() + 2}-12-31`} required /><Text style={{ color: colors.ink, fontWeight: "700" }}>Start time</Text><View style={{ flexDirection: "row", gap: 8 }}>{[{label:"10:00 AM",value:"10:00"},{label:"1:00 PM",value:"13:00"},{label:"3:30 PM",value:"15:30"}].map(t => <Pressable key={t.value} onPress={() => setTime(t.value)} style={{ flex: 1, padding: 10, borderRadius: 10, backgroundColor: time === t.value ? colors.primary : colors.softBlue, alignItems: "center" }}><Text style={{ color: time === t.value ? "#fff" : colors.ink, fontWeight: "700", fontSize: 11 }}>{t.label}</Text></Pressable>)}</View>
         <Field label="Optional note" value={note} onChangeText={setNote} placeholder="Anything the counsellor should know?" multiline />
         <Button title={saving ? "Requesting…" : "Request appointment"} disabled={saving || !selectedTopicId} onPress={async () => {
           const [year, month, day] = date.split("-").map(Number);
@@ -93,12 +96,12 @@ export default function FeatureScreen() {
     </>}
     {slug === "discussion" && <Card><Text style={{ color: colors.ink, fontWeight: "800" }}>Private discussions have moved to Counselling.</Text><Button title="Open counselling" onPress={() => router.push("/(student)/counselling")} /></Card>}
     {slug === "saved" && <>
-      <Heading title="Saved resources" small />{app.resources.filter(r => app.savedResources.includes(r.id)).map(r => <Card key={r.id}><Pill label={r.category} /><Text style={{ color: colors.ink, fontWeight: "800" }}>{r.title}</Text><Text style={{ color: colors.muted }}>{r.description}</Text><Button title="Remove saved item" variant="ghost" onPress={() => app.toggleResource(r.id)} /></Card>)}
-      <Heading title="Saved scholarships" small />{app.scholarships.filter(s => app.savedScholarships.includes(s.id)).map(s => <Card key={s.id}><Text style={{ color: colors.ink, fontWeight: "800" }}>{s.title}</Text><Text style={{ color: colors.muted }}>Deadline: {s.deadline}</Text><Button title="Remove saved item" variant="ghost" onPress={() => app.toggleScholarship(s.id)} /></Card>)}
+      <Heading title="Saved resources" small />{app.resources.filter(r => app.savedResources.includes(r.id)).map(r => <ResourceCard key={r.id} item={r} saved onToggleSave={() => app.toggleResource(r.id)} />)}
+      <Heading title="Saved scholarships" small />{app.scholarships.filter(sch => app.savedScholarships.includes(sch.id)).map(sch => <ScholarshipCard key={sch.id} item={sch} saved onToggleSave={() => app.toggleScholarship(sch.id)} />)}
       {!app.savedResources.length && !app.savedScholarships.length && <Card><Text style={{ color: colors.muted }}>You have not saved anything yet. Open Explore and tap Save on an item.</Text></Card>}
     </>}
     {(slug === "resources" || slug === "career" || slug === "business") && <>
-      {app.resources.filter(resource => slug === "resources" || resource.category.toLowerCase().includes(slug)).map(r => <Card key={r.id}><Pill label={r.category} /><Text style={{ color: colors.ink, fontWeight: "800", fontSize: 17 }}>{r.title}</Text><Text style={{ color: colors.muted, lineHeight: 21 }}>{r.description}</Text><Row style={{ justifyContent: "space-between" }}><Text style={{ color: colors.muted, fontSize: 12 }}>{r.readTime}</Text><Button title={app.savedResources.includes(r.id) ? "Saved ♥" : "Save ♡"} variant="secondary" onPress={() => app.toggleResource(r.id)} /></Row></Card>)}
+      {app.resources.filter(resource => slug === "resources" || resource.category.toLowerCase().includes(slug)).map(r => <ResourceCard key={r.id} item={r} saved={app.savedResources.includes(r.id)} onToggleSave={() => app.toggleResource(r.id)} />)}
       {!app.resources.some(resource => slug === "resources" || resource.category.toLowerCase().includes(slug)) && <Card><Text style={{ color: colors.muted }}>No resources have been published in this section yet. Check back after administrators publish relevant content.</Text></Card>}
     </>}
     {slug === "universities" && <Card>

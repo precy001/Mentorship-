@@ -28,8 +28,8 @@ type AppState = {
   bookings: Booking[];
   goals: { id: string; title: string; done: boolean }[];
   notifications: Notice[];
-  resources: { id: string; title: string; category: string; readTime: string; description: string }[];
-  scholarships: { id: string; title: string; provider: string; level: string; deadline: string; eligibility: string; description: string }[];
+  resources: { id: string; title: string; category: string; readTime: string; description: string; imageUrl: string | null }[];
+  scholarships: { id: string; title: string; provider: string; level: string; deadline: string; eligibility: string; description: string; imageUrl: string | null }[];
 };
 
 const STORAGE_KEY = "mentorship-plus-state-v2";
@@ -96,8 +96,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (generation !== accountGeneration.current) return;
     setState(current => ({
       ...current,
-      resources: resources.status === "fulfilled" ? resources.value.map(item => ({ id: item.id, title: item.title, category: item.category, readTime: item.readTime, description: item.description })) : current.resources,
-      scholarships: scholarships.status === "fulfilled" ? scholarships.value.map(item => ({ id: item.id, title: item.title, provider: item.provider, level: item.level, deadline: item.deadline.slice(0, 10), eligibility: item.eligibility, description: item.description })) : current.scholarships,
+      resources: resources.status === "fulfilled" ? resources.value.map(item => ({ id: item.id, title: item.title, category: item.category, readTime: item.readTime, description: item.description, imageUrl: item.imageUrl ?? null })) : current.resources,
+      scholarships: scholarships.status === "fulfilled" ? scholarships.value.map(item => ({ id: item.id, title: item.title, provider: item.provider, level: item.level, deadline: item.deadline, eligibility: item.eligibility, description: item.description, imageUrl: item.imageUrl ?? null })) : current.scholarships,
       goals: goals.status === "fulfilled" ? goals.value.map(item => ({ id: item.id, title: typeof item.payload.title === "string" ? item.payload.title : "Personal goal", done: item.payload.done === true })) : current.goals,
       notifications: notifications.status === "fulfilled" ? notifications.value.map(item => ({ id: item.id, title: item.title, body: item.body, read: Boolean(item.readAt), type: item.type })) : current.notifications,
       bookings: appointments.status === "fulfilled" ? appointments.value.map(item => ({ id: item.id, counsellor: item.counsellor.user.displayName || "Counsellor", date: new Date(item.startsAt).toLocaleDateString(), time: new Date(item.startsAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }), startsAt: item.startsAt, topic: item.topic?.name || "Counselling", status: item.status.toLowerCase() })) : current.bookings,

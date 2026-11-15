@@ -330,37 +330,28 @@ export async function apiResendVerification(
   );
 }
 
-export async function apiUploadProfilePicture(
+async function uploadImageFile(
+  path: string,
   uri: string,
-  mimeType: string,
-): Promise<{ avatarUrl: string }> {
+  options: { responseKey: string; sessionMessage: string; noFileMessage: string; label: string },
+): Promise<string> {
   const token = await AsyncStorage.getItem(TOKEN_KEY);
 
   if (!token) {
-    throw new ApiError(
-      "Please sign in again to update your profile picture.",
-      401,
-    );
+    throw new ApiError(options.sessionMessage, 401);
   }
 
   if (!uri) {
-    throw new Error("No profile picture was selected.");
+    throw new Error(options.noFileMessage);
   }
 
   const baseUrl = requireApiBaseUrl();
   const controller = new AbortController();
-
-  const timeout = setTimeout(
-    () => controller.abort(),
-    30_000,
-  );
-
-  const uploadUrl = `${baseUrl}/profile/avatar`;
+  const timeout = setTimeout(() => controller.abort(), 30_000);
+  const uploadUrl = `${baseUrl}${path}`;
 
   try {
     // Expo SDK 57 requires an actual File/Blob in FormData.
-    // The previous { uri, name, type } object caused
-    // "Unsupported FormDataPart implementation".
     const imageFile = new File(uri);
 
     if (!imageFile.exists) {
@@ -370,13 +361,9 @@ export async function apiUploadProfilePicture(
     const form = new FormData();
     form.append("file", imageFile);
 
-    console.log("[Profile Upload] Starting upload:", uploadUrl);
-
     const response = await expoFetch(uploadUrl, {
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
+      headers: { Authorization: `Bearer ${token}` },
       body: form,
       signal: controller.signal,
     });
@@ -384,65 +371,65 @@ export async function apiUploadProfilePicture(
     const body = await parseResponseBody(response);
 
     if (!response.ok) {
-      const message = extractErrorMessage(
-        body,
-        `Profile picture upload failed with status ${response.status}.`,
-      );
-
-      console.error("[Profile Upload] Server rejected upload:", {
-        status: response.status,
-        message,
-      });
-
-      throw new ApiError(message, response.status);
-    }
-
-    if (
-      !body ||
-      typeof body !== "object" ||
-      typeof (body as Record<string, unknown>).avatarUrl !== "string"
-    ) {
-      throw new Error(
-        "The server did not return a valid profile picture URL.",
+      throw new ApiError(
+        extractErrorMessage(body, `${options.label} upload failed with status ${response.status}.`),
+        response.status,
       );
     }
 
-    const avatarUrl = (body as { avatarUrl: string }).avatarUrl;
+    const value =
+      body && typeof body === "object" ? (body as Record<string, unknown>)[options.responseKey] : undefined;
 
-    if (!avatarUrl.trim()) {
-      throw new Error("The server returned an empty profile picture URL.");
+    if (typeof value !== "string" || !value.trim()) {
+      throw new Error(`The server did not return a valid ${options.label.toLowerCase()} URL.`);
     }
 
-    console.log("[Profile Upload] Upload successful.");
-
-    return { avatarUrl };
+    return value;
   } catch (error) {
-    console.error("[Profile Upload] Failed:", {
-      url: uploadUrl,
-      errorName:
-        error instanceof Error ? error.name : "Unknown",
-      errorMessage:
-        error instanceof Error ? error.message : String(error),
+    console.error("[Image Upload] Failed:", {
+      path,
+      errorName: error instanceof Error ? error.name : "Unknown",
+      errorMessage: error instanceof Error ? error.message : String(error),
     });
 
-    if (error instanceof ApiError) {
-      throw error;
-    }
+    if (error instanceof ApiError) throw error;
 
     if (error instanceof Error && error.name === "AbortError") {
-      throw new Error(
-        "The profile picture upload timed out. Please try again.",
-      );
+      throw new Error(`The ${options.label.toLowerCase()} upload timed out. Please try again.`);
     }
 
     throw new Error(
       error instanceof Error
-        ? `Profile upload failed: ${error.message}`
-        : `Profile upload failed: ${String(error)}`,
+        ? `${options.label} upload failed: ${error.message}`
+        : `${options.label} upload failed: ${String(error)}`,
     );
   } finally {
     clearTimeout(timeout);
   }
+}
+
+export async function apiUploadProfilePicture(
+  uri: string,
+  _mimeType?: string,
+): Promise<{ avatarUrl: string }> {
+  const avatarUrl = await uploadImageFile("/profile/avatar", uri, {
+    responseKey: "avatarUrl",
+    sessionMessage: "Please sign in again to update your profile picture.",
+    noFileMessage: "No profile picture was selected.",
+    label: "Profile picture",
+  });
+  return { avatarUrl };
+}
+
+/** Admin only. Uploads an image to persistent storage and returns its public URL. */
+export async function apiAdminUploadContentImage(uri: string): Promise<{ imageUrl: string }> {
+  const imageUrl = await uploadImageFile("/admin/uploads/content-image", uri, {
+    responseKey: "imageUrl",
+    sessionMessage: "Please sign in again to upload images.",
+    noFileMessage: "No image was selected.",
+    label: "Image",
+  });
+  return { imageUrl };
 }
 
 export type AdminDashboardStats = {
@@ -498,16 +485,23 @@ export const apiUpdateAppointmentStatus = (id: string, status: "CONFIRMED" | "CO
 export const apiAdminSetAccountStatus = (userId: string, status: "ACTIVE" | "SUSPENDED" | "DEACTIVATED") => apiRequest(`/admin/users/${encodeURIComponent(userId)}/status`, { method: "PATCH", body: JSON.stringify({ status }) }, true);
 export const apiAdminInviteCounsellor = (email: string, topicIds: string[]) => apiRequest<{ message: string }>("/admin/counsellors/invitations", { method: "POST", body: JSON.stringify({ email: email.trim().toLowerCase(), topicIds }) }, true);
 export const apiAcceptCounsellorInvitation = (token: string) => apiRequest<{ id: string; email: string; role: string }>("/admin/counsellors/invitations/accept", { method: "POST", body: JSON.stringify({ token }) }, true);
-export type AdminResource = { id: string; title: string; category: string; readTime: string; description: string; isActive: boolean };
-export type AdminScholarship = { id: string; title: string; provider: string; level: string; deadline: string; eligibility: string; description: string; isActive: boolean };
+export type AdminResource = { id: string; title: string; category: string; readTime: string; description: string; imageUrl: string | null; isActive: boolean; createdAt?: string };
+export type AdminScholarship = { id: string; title: string; provider: string; level: string; deadline: string; eligibility: string; description: string; imageUrl: string | null; isActive: boolean; createdAt?: string };
+/** `imageUrl`: omit to keep the current image on update, null to remove it. */
+export type ResourceInput = { title: string; category: string; readTime: string; description: string; imageUrl?: string | null };
+export type ScholarshipInput = { title: string; provider: string; level: string; deadline: string; eligibility: string; description: string; imageUrl?: string | null };
 export type ServiceAreaRecord = { id: string; state: string; lga: string; lcda: string; isActive: boolean };
 export type PublicResource = AdminResource;
 export type PublicScholarship = AdminScholarship;
 export const apiAdminResources = () => apiRequest<AdminResource[]>("/admin/resources", {}, true);
-export const apiAdminCreateResource = (input: Omit<AdminResource, "id" | "isActive">) => apiRequest<AdminResource>("/admin/resources", { method: "POST", body: JSON.stringify(input) }, true);
+export const apiAdminCreateResource = (input: ResourceInput) => apiRequest<AdminResource>("/admin/resources", { method: "POST", body: JSON.stringify(input) }, true);
+export const apiAdminUpdateResource = (id: string, input: ResourceInput) => apiRequest<AdminResource>(`/admin/resources/${encodeURIComponent(id)}`, { method: "PUT", body: JSON.stringify(input) }, true);
+export const apiAdminDeleteResource = (id: string) => apiRequest<{ success: boolean }>(`/admin/resources/${encodeURIComponent(id)}`, { method: "DELETE" }, true);
 export const apiAdminSetResourceActive = (id: string, isActive: boolean) => apiRequest<AdminResource>(`/admin/resources/${encodeURIComponent(id)}/active`, { method: "PATCH", body: JSON.stringify({ isActive }) }, true);
 export const apiAdminScholarships = () => apiRequest<AdminScholarship[]>("/admin/scholarships", {}, true);
-export const apiAdminCreateScholarship = (input: Omit<AdminScholarship, "id" | "isActive">) => apiRequest<AdminScholarship>("/admin/scholarships", { method: "POST", body: JSON.stringify(input) }, true);
+export const apiAdminCreateScholarship = (input: ScholarshipInput) => apiRequest<AdminScholarship>("/admin/scholarships", { method: "POST", body: JSON.stringify(input) }, true);
+export const apiAdminUpdateScholarship = (id: string, input: ScholarshipInput) => apiRequest<AdminScholarship>(`/admin/scholarships/${encodeURIComponent(id)}`, { method: "PUT", body: JSON.stringify(input) }, true);
+export const apiAdminDeleteScholarship = (id: string) => apiRequest<{ success: boolean }>(`/admin/scholarships/${encodeURIComponent(id)}`, { method: "DELETE" }, true);
 export const apiAdminSetScholarshipActive = (id: string, isActive: boolean) => apiRequest<AdminScholarship>(`/admin/scholarships/${encodeURIComponent(id)}/active`, { method: "PATCH", body: JSON.stringify({ isActive }) }, true);
 export const apiAdminServiceAreas = () => apiRequest<ServiceAreaRecord[]>("/admin/service-areas", {}, true);
 export const apiAdminSetServiceAreaActive = (id: string, isActive: boolean) => apiRequest<ServiceAreaRecord>(`/admin/service-areas/${encodeURIComponent(id)}/active`, { method: "PATCH", body: JSON.stringify({ isActive }) }, true);
