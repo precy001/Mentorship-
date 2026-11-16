@@ -9,6 +9,13 @@ export class ApiExceptionFilter implements ExceptionFilter {
     const response = ctx.getResponse<Response>();
     const request = ctx.getRequest<Request>();
     const isHttp = exception instanceof HttpException;
+    // Two people changing the same record at once makes a Serializable transaction fail with P2034.
+    // That is a retryable conflict, not a server fault.
+    const prismaCode = !isHttp && typeof exception === 'object' && exception !== null ? (exception as { code?: unknown }).code : undefined;
+    if (prismaCode === 'P2034') {
+      response.status(HttpStatus.CONFLICT).json({ statusCode: HttpStatus.CONFLICT, message: 'That item was just updated by someone else. Please try again.', error: 'Conflict', timestamp: new Date().toISOString(), path: request.path });
+      return;
+    }
     const status = isHttp ? exception.getStatus() : HttpStatus.INTERNAL_SERVER_ERROR;
     if (!isHttp || status >= 500) {
       const detail = exception instanceof Error ? `${exception.name}: ${exception.message}\n${exception.stack ?? ''}` : String(exception);

@@ -19,6 +19,8 @@ async function bootstrap(): Promise<void> {
     .map((origin) => origin.trim())
     .filter(Boolean);
 
+  // Render terminates TLS in front of the API; trusting one proxy hop makes request.ip the real client for rate limiting.
+  app.getHttpAdapter().getInstance().set('trust proxy', 1);
   app.setGlobalPrefix(prefix);
   app.use(helmet());
   app.enableCors({

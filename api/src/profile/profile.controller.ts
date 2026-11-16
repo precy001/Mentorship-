@@ -6,13 +6,22 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser, type AuthenticatedUser } from '../auth/decorators/current-user.decorator';
 import { ProfileService } from './profile.service';
 import { UpdateCategoryDto } from './update-category.dto';
+import { UpdateProfileDto } from './update-profile.dto';
+import { AuthService } from '../auth/auth.service';
 
 type UploadedImage = { buffer: Buffer; mimetype: string; size: number };
 
 @Controller('profile')
 @UseGuards(JwtAuthGuard)
 export class ProfileController {
-  constructor(private readonly profiles: ProfileService) {}
+  constructor(private readonly profiles: ProfileService, private readonly auth: AuthService) {}
+
+  /** Edits the signed-in member's own details and returns the refreshed account, exactly as /auth/me does. */
+  @Patch()
+  async updateProfile(@CurrentUser() user: AuthenticatedUser, @Body() dto: UpdateProfileDto) {
+    await this.profiles.updateProfile(user.id, dto);
+    return this.auth.getMe(user.id);
+  }
 
   @Patch('membership')
   updateMembership(@CurrentUser() user: AuthenticatedUser, @Body() dto: UpdateCategoryDto) {

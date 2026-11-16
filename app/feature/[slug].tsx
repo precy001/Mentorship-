@@ -5,12 +5,13 @@ import { router, useLocalSearchParams } from "expo-router";
 import { Screen, Heading, Card, Button, Field, Pill, BackLink, SectionHeader, OptionCard, Chip, EmptyState, StarRating, IconBadge } from "@/src/components/UI";
 import type { IconName } from "@/src/components/UI";
 import { DatePickerField } from "@/src/components/Forms";
+import { RescheduleForm } from "@/src/components/RescheduleForm";
 import { ResourceCard, ScholarshipCard } from "@/src/components/ContentCards";
 import { toDateString } from "@/src/lib/validation";
 import { appointmentTone, formatDateTime, formatShortDate, formatTimeRange, humanize } from "@/src/lib/format";
 import { useApp } from "@/src/context/AppContext";
 import { colors } from "@/src/lib/theme";
-import { apiCreateActivity, apiListActivities, apiListNotifications, apiMarkNotificationRead, ActivityRecord, UserNotification, apiDiscussionTopics, apiListAppointments, apiCreateAppointment, apiUpdateAppointmentStatus, DiscussionTopic, AppointmentRecord, apiMyRatings, apiCreateRating, MyRating } from "@/src/lib/api";
+import { apiCreateActivity, apiListActivities, apiNotificationPage, apiRescheduleAppointment, ActivityRecord, UserNotification, apiDiscussionTopics, apiListAppointments, apiCreateAppointment, apiUpdateAppointmentStatus, DiscussionTopic, AppointmentRecord, apiMyRatings, apiCreateRating, MyRating } from "@/src/lib/api";
 
 const MOODS: { value: string; icon: IconName }[] = [
   { value: "Great", icon: "happy" },
@@ -42,13 +43,27 @@ export default function FeatureScreen() {
   const [appointmentScores, setAppointmentScores] = useState<Record<string, number>>({});
   const [selectedTopicId, setSelectedTopicId] = useState("");
   const [saving, setSaving] = useState(false);
+  const [noticesMore, setNoticesMore] = useState(false);
+  const [noticesLoading, setNoticesLoading] = useState(false);
+  const [reschedulingId, setReschedulingId] = useState<string | null>(null);
+  const loadNotices = async (append: boolean) => {
+    try {
+      setNoticesLoading(true);
+      const before = append ? remoteNotifications[remoteNotifications.length - 1]?.createdAt : undefined;
+      const page = await apiNotificationPage({ limit: 20, before });
+      setRemoteNotifications(current => append ? [...current, ...page.items.filter(item => !current.some(existing => existing.id === item.id))] : page.items);
+      setNoticesMore(page.hasMore);
+      if (!append) void app.refreshNotifications();
+    } catch (error) { Alert.alert("Notifications unavailable", error instanceof Error ? error.message : "Please try again."); }
+    finally { setNoticesLoading(false); }
+  };
+  useEffect(() => { if (slug === "notifications") void loadNotices(false); }, [slug]);
   const refreshActivities = async () => {
     try {
-      const [items, notices] = await Promise.all([apiListActivities(), apiListNotifications()]);
-      setRecords(items); setRemoteNotifications(notices);
+      setRecords(await apiListActivities());
     } catch (error) { Alert.alert("Activity data unavailable", error instanceof Error ? error.message : "Please try again."); }
   };
-  useEffect(() => { if (["assessment", "wellness", "goals", "notifications", "history"].includes(slug)) void refreshActivities(); }, [slug]);
+  useEffect(() => { if (["assessment", "wellness", "goals", "history"].includes(slug)) void refreshActivities(); }, [slug]);
   useEffect(() => {
     if (slug !== "history") return;
     Promise.all([apiListAppointments(), apiMyRatings()]).then(([items, ratings]) => { setAppointments(items); setMyRatings(ratings); }).catch(error => Alert.alert("Appointment history unavailable", error instanceof Error ? error.message : "Please try again."));
@@ -75,6 +90,20 @@ export default function FeatureScreen() {
   };
 
   const cancelAppointment = (item: AppointmentRecord) => Alert.alert("Cancel appointment?", "This will cancel your appointment request.", [{ text: "Keep", style: "cancel" }, { text: "Cancel appointment", style: "destructive", onPress: async () => { try { await apiUpdateAppointmentStatus(item.id, "CANCELLED"); setAppointments(await apiListAppointments()); await app.refreshAccountData(); } catch (error) { Alert.alert("Could not cancel", error instanceof Error ? error.message : "Please try again."); } } }]);
+
+  const reschedule = async (item: AppointmentRecord, startsAtIso: string, endsAtIso: string) => {
+    try {
+      setSaving(true);
+      await apiRescheduleAppointment(item.id, startsAtIso, endsAtIso);
+      setReschedulingId(null); setAppointments(await apiListAppointments()); await app.refreshAccountData();
+      Alert.alert("New time sent", "Your counsellor will be asked to confirm the new time.");
+    } catch (error) { Alert.alert("Could not reschedule", error instanceof Error ? error.message : "Please choose another time."); }
+    finally { setSaving(false); }
+  };
+  const confirmProposedTime = async (item: AppointmentRecord) => {
+    try { await apiUpdateAppointmentStatus(item.id, "CONFIRMED"); setAppointments(await apiListAppointments()); await app.refreshAccountData(); }
+    catch (error) { Alert.alert("Could not confirm", error instanceof Error ? error.message : "Please try again."); }
+  };
 
   const saveAssessment = async () => {
     const result = answers.some(item => /people|listening|community|helping/i.test(item)) ? "people-focused paths" : answers.some(item => /analysing|logic|data|research/i.test(item)) ? "analytical and research paths" : "practical and technical paths";
@@ -118,6 +147,10 @@ export default function FeatureScreen() {
         </View>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}><Ionicons name="calendar-outline" size={16} color={colors.muted} /><Text style={{ color: colors.ink, flex: 1 }}>{formatTimeRange(item.startsAt, item.endsAt)}</Text></View>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}><Ionicons name="person-outline" size={16} color={colors.muted} /><Text style={{ color: colors.muted, fontSize: 13, flex: 1 }}>{item.counsellor.user.displayName || "Assigned counsellor"}</Text></View>
+        {item.status === "RESCHEDULED" && item.rescheduledById && item.rescheduledById !== app.user?.id ? <Button title="Confirm the new time" icon="checkmark" size="sm" onPress={() => void confirmProposedTime(item)} /> : null}
+        {item.status === "RESCHEDULED" && item.rescheduledById === app.user?.id ? <Text style={{ color: colors.muted, fontSize: 13 }}>Waiting for your counsellor to confirm the new time.</Text> : null}
+        {["REQUESTED", "CONFIRMED", "RESCHEDULED"].includes(item.status) && new Date(item.startsAt).getTime() > Date.now() ? <Button title={reschedulingId === item.id ? "Hide reschedule" : "Reschedule"} icon="time-outline" variant="secondary" size="sm" onPress={() => setReschedulingId(current => current === item.id ? null : item.id)} /> : null}
+        {reschedulingId === item.id ? <RescheduleForm startsAt={item.startsAt} endsAt={item.endsAt} busy={saving} onSubmit={(a, b) => void reschedule(item, a, b)} onClose={() => setReschedulingId(null)} /> : null}
         {["REQUESTED", "CONFIRMED", "RESCHEDULED"].includes(item.status) ? <Button title="Cancel appointment" variant="dangerSoft" size="sm" onPress={() => cancelAppointment(item)} /> : null}
       </Card>) : <EmptyState icon="calendar-outline" title="No appointments yet" message="Request a session above and it will appear here." />}
     </>}
@@ -169,14 +202,19 @@ export default function FeatureScreen() {
     </>}
 
     {slug === "notifications" && <>
-      {remoteNotifications.map(n => <Pressable key={n.id} accessibilityRole="button" accessibilityLabel={`${n.title}. ${n.readAt ? "Read" : "Unread, tap to mark as read"}`} onPress={async () => { if (n.readAt) return; try { await apiMarkNotificationRead(n.id); await refreshActivities(); await app.refreshAccountData(); } catch (error) { Alert.alert("Notification not updated", error instanceof Error ? error.message : "Please try again."); } }}>
+      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+        <Text accessibilityLiveRegion="polite" style={{ color: colors.muted, fontSize: 13, flex: 1 }}>{app.unreadCount ? `${app.unreadCount} unread` : "Everything is read"}</Text>
+        {app.unreadCount > 0 ? <Button title="Mark all as read" icon="checkmark-done-outline" variant="secondary" size="sm" onPress={async () => { try { await app.markAllRead(); setRemoteNotifications(current => current.map(item => item.readAt ? item : { ...item, readAt: new Date().toISOString() })); } catch (error) { Alert.alert("Could not update", error instanceof Error ? error.message : "Please try again."); } }} /> : null}
+      </View>
+      {remoteNotifications.map(n => <Pressable key={n.id} accessibilityRole="button" accessibilityLabel={`${n.title}. ${n.body}. ${n.readAt ? "Read" : "Unread, tap to mark as read"}`} onPress={async () => { if (n.readAt) return; try { await app.markRead(n.id); setRemoteNotifications(current => current.map(item => item.id === n.id ? { ...item, readAt: new Date().toISOString() } : item)); } catch (error) { Alert.alert("Notification not updated", error instanceof Error ? error.message : "Please try again."); } }}>
         <Card style={{ borderColor: n.readAt ? colors.cardBorder : colors.primary, borderWidth: n.readAt ? 1 : 1.5, backgroundColor: n.readAt ? colors.surface : colors.brandSurface }}>
           <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 10 }}><Text style={{ color: colors.ink, fontWeight: "800", flex: 1, fontSize: 15 }}>{n.title}</Text>{!n.readAt && <Pill label="New" tone="green" />}</View>
           <Text style={{ color: colors.muted, lineHeight: 20 }}>{n.body}</Text>
-          {!n.readAt ? <Text style={{ color: colors.primary, fontSize: 12, fontWeight: "700" }}>Tap to mark as read</Text> : null}
+          <Text style={{ color: colors.mutedLight, fontSize: 12 }}>{formatDateTime(n.createdAt)}</Text>
         </Card>
       </Pressable>)}
-      {!remoteNotifications.length && <EmptyState icon="notifications-outline" title="You’re all caught up" message="You have no notifications yet." />}
+      {noticesMore ? <Button title={noticesLoading ? "Loading…" : "Load earlier notifications"} variant="secondary" loading={noticesLoading} onPress={() => void loadNotices(true)} /> : null}
+      {!remoteNotifications.length && !noticesLoading && <EmptyState icon="notifications-outline" title="You’re all caught up" message="You have no notifications yet." />}
     </>}
 
     {slug === "history" && <>

@@ -28,7 +28,7 @@ export default function StudentHome() {
     { title: "Speak to a counsellor", slug: "counselling", icon: "chatbubble-ellipses-outline" as const },
     { title: "Book appointment", slug: "booking", icon: "calendar-outline" as const },
   ];
-  const unread = app.notifications.filter(n => !n.read).length;
+  const unread = app.unreadCount;
   const upcoming = app.bookings.filter(b => ["requested", "confirmed", "rescheduled"].includes(b.status) && new Date(b.startsAt).getTime() > Date.now());
   const doneGoals = app.goals.filter(g => g.done).length;
 
@@ -125,7 +125,7 @@ export default function StudentHome() {
       />
       {(() => {
         const shown = isEducation || !isCareer ? app.resources : app.resources.filter(r => /career|business/i.test(r.category));
-        const featured = shown.find(r => r.imageUrl) ?? null;
+        const featured = shown.find(r => r.imageUrl) ?? shown[0] ?? null;
         const rest = shown.filter(r => r.id !== featured?.id).slice(0, 2);
         return <>
           {featured ? <FeaturedBanner eyebrow={featured.category} title={featured.title} subtitle={featured.readTime} imageUrl={featured.imageUrl} onPress={() => go("resources")} /> : null}

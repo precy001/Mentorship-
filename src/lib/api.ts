@@ -5,6 +5,7 @@ import { File } from "expo-file-system";
 import { fetch as expoFetch } from "expo/fetch";
 
 const TOKEN_KEY = "mentorship-plus-access-token-v1";
+const REFRESH_KEY = "mentorship-plus-refresh-token-v1";
 const REQUEST_TIMEOUT_MS = 15_000;
 
 function resolveBaseUrl(): string {
@@ -65,6 +66,8 @@ export type ApiUser = {
   status: string;
   displayName: string | null;
   emailVerifiedAt?: string | null;
+  /** Null until the person has dismissed the one-time welcome. */
+  welcomeSeenAt?: string | null;
   profile?: {
     avatarUrl?: string | null;
     phoneNumber?: string | null;
@@ -147,7 +150,7 @@ async function parseResponseBody(response: Response): Promise<unknown> {
   }
 }
 
-export async function apiRequest<T>(
+async function sendRequest<T>(
   path: string,
   init: RequestInit = {},
   authenticated = false,
@@ -219,12 +222,55 @@ export async function apiRequest<T>(
   return body as T;
 }
 
+let renewing: Promise<boolean> | null = null;
+
+/** Exchanges the stored refresh token for a new access token. Concurrent callers share one attempt. */
+function renewSession(): Promise<boolean> {
+  if (!renewing) {
+    renewing = (async () => {
+      const refreshToken = await AsyncStorage.getItem(REFRESH_KEY);
+      if (!refreshToken) return false;
+      try {
+        const result = await sendRequest<{ accessToken: string; refreshToken: string }>(
+          "/auth/refresh",
+          { method: "POST", body: JSON.stringify({ refreshToken }) },
+          false,
+        );
+        await AsyncStorage.multiSet([[TOKEN_KEY, result.accessToken], [REFRESH_KEY, result.refreshToken]]);
+        return true;
+      } catch (error) {
+        // A rejected refresh token means the session is over. A network failure keeps it for the next try.
+        if (error instanceof ApiError && error.status === 401) await AsyncStorage.multiRemove([TOKEN_KEY, REFRESH_KEY]);
+        return false;
+      }
+    })().finally(() => { renewing = null; });
+  }
+  return renewing;
+}
+
+/** Sends an API request. If the short-lived access token has expired, the session is renewed once and the request retried. */
+export async function apiRequest<T>(
+  path: string,
+  init: RequestInit = {},
+  authenticated = false,
+): Promise<T> {
+  try {
+    return await sendRequest<T>(path, init, authenticated);
+  } catch (error) {
+    if (authenticated && error instanceof ApiError && error.status === 401 && (await renewSession())) {
+      return sendRequest<T>(path, init, true);
+    }
+    throw error;
+  }
+}
+
 export async function apiLogin(
   email: string,
   password: string,
 ): Promise<ApiUser> {
   const result = await apiRequest<{
     accessToken: string;
+    refreshToken?: string;
     user: ApiUser;
   }>("/auth/login", {
     method: "POST",
@@ -239,6 +285,8 @@ export async function apiLogin(
   }
 
   await AsyncStorage.setItem(TOKEN_KEY, result.accessToken);
+  if (result.refreshToken) await AsyncStorage.setItem(REFRESH_KEY, result.refreshToken);
+  else await AsyncStorage.removeItem(REFRESH_KEY);
 
   return result.user;
 }
@@ -266,7 +314,12 @@ export async function apiRegister(input: {
 }
 
 export async function apiLogout(): Promise<void> {
-  await AsyncStorage.removeItem(TOKEN_KEY);
+  const refreshToken = await AsyncStorage.getItem(REFRESH_KEY);
+  // Sign-out must always work on the device, so the server call is best effort.
+  if (refreshToken) {
+    await sendRequest("/auth/logout", { method: "POST", body: JSON.stringify({ refreshToken }) }, false).catch(() => undefined);
+  }
+  await AsyncStorage.multiRemove([TOKEN_KEY, REFRESH_KEY]);
 }
 
 export async function apiMe(): Promise<ApiUser> {
@@ -330,7 +383,7 @@ export async function apiResendVerification(
   );
 }
 
-async function uploadImageFile(
+async function uploadImageFileOnce(
   path: string,
   uri: string,
   options: { responseKey: string; sessionMessage: string; noFileMessage: string; label: string },
@@ -408,6 +461,21 @@ async function uploadImageFile(
   }
 }
 
+async function uploadImageFile(
+  path: string,
+  uri: string,
+  options: { responseKey: string; sessionMessage: string; noFileMessage: string; label: string },
+): Promise<string> {
+  try {
+    return await uploadImageFileOnce(path, uri, options);
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 401 && (await renewSession())) {
+      return uploadImageFileOnce(path, uri, options);
+    }
+    throw error;
+  }
+}
+
 export async function apiUploadProfilePicture(
   uri: string,
   _mimeType?: string,
@@ -478,7 +546,7 @@ export const apiCreateActivity = (type: "CAREER_ASSESSMENT" | "WELLBEING_CHECKIN
 export const apiUpdateActivity = (id: string, type: "CAREER_ASSESSMENT" | "WELLBEING_CHECKIN" | "PERSONAL_GOAL", payload: Record<string, unknown>) => apiRequest<ActivityRecord>(`/activities/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify({ type, payload }) }, true);
 export const apiListNotifications = () => apiRequest<UserNotification[]>("/activities/notifications", {}, true);
 export const apiMarkNotificationRead = (id: string) => apiRequest<{ success: boolean }>(`/activities/notifications/${encodeURIComponent(id)}/read`, { method: "POST" }, true);
-export type AppointmentRecord = { id: string; status: string; startsAt: string; endsAt: string; notes: string | null; topic: { id: string; name: string } | null; member?: { id: string; displayName: string | null; email?: string }; counsellor: { user: { id: string; displayName: string | null; email?: string } } };
+export type AppointmentRecord = { id: string; status: string; startsAt: string; endsAt: string; notes: string | null; rescheduledById?: string | null; topic: { id: string; name: string } | null; member?: { id: string; displayName: string | null; email?: string }; counsellor: { user: { id: string; displayName: string | null; email?: string } } };
 export const apiListAppointments = () => apiRequest<AppointmentRecord[]>("/appointments", {}, true);
 export const apiCreateAppointment = (input: { topicId: string; startsAt: string; endsAt: string; notes?: string }) => apiRequest<AppointmentRecord>("/appointments", { method: "POST", body: JSON.stringify(input) }, true);
 export const apiUpdateAppointmentStatus = (id: string, status: "CONFIRMED" | "COMPLETED" | "CANCELLED" | "NO_SHOW") => apiRequest<AppointmentRecord>(`/appointments/${encodeURIComponent(id)}/status`, { method: "PATCH", body: JSON.stringify({ status }) }, true);
@@ -533,3 +601,22 @@ export const apiAdminAppointments = () => apiRequest<AdminAppointment[]>("/admin
 export const apiAdminAuditLogs = () => apiRequest<AuditLogRecord[]>("/admin/audit-logs", {}, true);
 export type MyRating = { id: string; discussionId: string | null; appointmentId: string | null; score: number; moderationStatus: string; createdAt: string };
 export const apiMyRatings = () => apiRequest<MyRating[]>("/ratings/mine", {}, true);
+
+export const apiRescheduleAppointment = (id: string, startsAt: string, endsAt: string) => apiRequest<AppointmentRecord>(`/appointments/${encodeURIComponent(id)}/reschedule`, { method: "PATCH", body: JSON.stringify({ startsAt, endsAt }) }, true);
+
+/** Edits the signed-in member's own details. Only the fields provided are changed. */
+export const apiUpdateProfile = (input: { displayName?: string; phoneNumber?: string; dateOfBirth?: string; school?: string }) => apiRequest<ApiUser>("/profile", { method: "PATCH", body: JSON.stringify(input) }, true);
+export const apiMarkWelcomeSeen = () => apiRequest<{ welcomeSeenAt: string }>("/auth/welcome-seen", { method: "POST" }, true);
+
+export type NotificationPage = { items: UserNotification[]; hasMore: boolean };
+export const apiNotificationPage = (options: { limit?: number; before?: string; unread?: boolean } = {}) => {
+  const query = new URLSearchParams();
+  if (options.limit) query.set("limit", String(options.limit));
+  if (options.before) query.set("before", options.before);
+  if (options.unread) query.set("unread", "true");
+  const text = query.toString();
+  return apiRequest<NotificationPage>(`/notifications${text ? `?${text}` : ""}`, {}, true);
+};
+export const apiNotificationUnreadCount = () => apiRequest<{ unread: number }>("/notifications/unread-count", {}, true);
+export const apiMarkAllNotificationsRead = () => apiRequest<{ updated: number }>("/notifications/read-all", { method: "POST" }, true);
+export const apiReadNotification = (id: string) => apiRequest<{ success: boolean }>(`/notifications/${encodeURIComponent(id)}/read`, { method: "POST" }, true);

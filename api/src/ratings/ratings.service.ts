@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException, ForbiddenException, Injectable,
 import { AppointmentStatus, DiscussionStatus, UserRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import type { AuthenticatedUser } from '../auth/decorators/current-user.decorator';
+import { createNotification } from '../notifications/notifications.service';
 @Injectable()
 export class RatingsService {
   constructor(private readonly prisma: PrismaService) {}
@@ -39,10 +40,16 @@ export class RatingsService {
     if (actor.role !== UserRole.ADMIN && actor.role !== UserRole.SUPER_ADMIN) throw new ForbiddenException('Administrator access is required.');
     const rating = await this.prisma.counsellorRating.findUnique({ where: { id } });
     if (!rating) throw new NotFoundException('Rating not found.');
-    const updated = await this.prisma.counsellorRating.update({ where: { id }, data: { moderationStatus: status } });
-    const aggregate = await this.prisma.counsellorRating.aggregate({ where: { counsellorId: rating.counsellorId, moderationStatus: 'APPROVED' }, _avg: { score: true }, _count: { _all: true } });
-    await this.prisma.counsellorProfile.update({ where: { id: rating.counsellorId }, data: { averageRating: aggregate._avg.score ?? null, ratingCount: aggregate._count._all } });
-    await this.prisma.auditLog.create({ data: { actorId: actor.id, action: 'COUNSELLOR_RATING_MODERATED', entityType: 'CounsellorRating', entityId: id, metadata: { status } } });
-    return updated;
+    // Status, aggregate, audit entry and notification commit together so the displayed average can never disagree with the approved ratings.
+    return this.prisma.$transaction(async tx => {
+      const updated = await tx.counsellorRating.update({ where: { id }, data: { moderationStatus: status } });
+      const aggregate = await tx.counsellorRating.aggregate({ where: { counsellorId: rating.counsellorId, moderationStatus: 'APPROVED' }, _avg: { score: true }, _count: { _all: true } });
+      const counsellor = await tx.counsellorProfile.update({ where: { id: rating.counsellorId }, data: { averageRating: aggregate._avg.score ?? null, ratingCount: aggregate._count._all }, select: { userId: true } });
+      await tx.auditLog.create({ data: { actorId: actor.id, action: 'COUNSELLOR_RATING_MODERATED', entityType: 'CounsellorRating', entityId: id, metadata: { status } } });
+      if (status === 'APPROVED' && rating.moderationStatus !== 'APPROVED') {
+        await createNotification(tx, counsellor.userId, 'New rating published', `A member rated a session ${rating.score} out of 5.`, 'RATING');
+      }
+      return updated;
+    });
   }
 }

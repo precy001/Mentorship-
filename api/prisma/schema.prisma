@@ -17,6 +17,7 @@ enum UserRole {
 enum AuthTokenType {
   EMAIL_VERIFICATION
   PASSWORD_RESET
+  REFRESH_SESSION
 }
 
 enum UserStatus {
@@ -57,6 +58,7 @@ model User {
   id                 String        @id @default(cuid())
   email              String        @unique @db.VarChar(320)
   emailVerifiedAt    DateTime?
+  welcomeSeenAt      DateTime?
   passwordHash       String        @db.VarChar(255)
   displayName        String?       @db.VarChar(160)
   role               UserRole      @default(MEMBER)
@@ -245,6 +247,8 @@ model Appointment {
   meetingMode  String   @default("IN_APP") @db.VarChar(30)
   notes        String?  @db.VarChar(2000)
   completedAt  DateTime?
+  rescheduledById String?
+  rescheduledAt DateTime?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
   member       User     @relation("AppointmentMember", fields: [memberId], references: [id], onDelete: Restrict)
@@ -329,6 +333,7 @@ model UserNotification {
   createdAt DateTime @default(now())
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   @@index([userId, readAt, createdAt])
+  @@index([userId, createdAt])
 }
 
 
@@ -347,6 +352,7 @@ model CounsellorInvitation {
 
 model Resource {
   id          String   @id @default(cuid())
+  seedKey     String?  @unique @db.VarChar(80)
   title       String   @db.VarChar(180)
   category    String   @db.VarChar(100)
   readTime    String   @default("5 min read") @db.VarChar(40)
@@ -360,6 +366,7 @@ model Resource {
 
 model Scholarship {
   id          String   @id @default(cuid())
+  seedKey     String?  @unique @db.VarChar(80)
   title       String   @db.VarChar(180)
   provider    String   @db.VarChar(180)
   level       String   @db.VarChar(100)

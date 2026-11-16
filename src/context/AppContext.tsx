@@ -1,6 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { AppState as NativeAppState } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { ApiError, apiLogout, apiMe, apiGetPublicResources, apiGetPublicScholarships, apiListActivities, apiListNotifications, apiCreateActivity, apiUpdateActivity, apiMarkNotificationRead, apiListAppointments } from "../lib/api";
+import { ApiError, apiLogout, apiMe, apiGetPublicResources, apiGetPublicScholarships, apiListActivities, apiNotificationPage, apiNotificationUnreadCount, apiMarkAllNotificationsRead, apiReadNotification, apiMarkWelcomeSeen, apiCreateActivity, apiUpdateActivity, apiListAppointments, type ApiUser } from "../lib/api";
 
 type AppRole = "member" | "student" | "counsellor" | "admin" | "super_admin";
 type User = {
@@ -10,7 +11,13 @@ type User = {
   role: AppRole;
   nin?: string;
   lga?: string;
+  lcda?: string;
   state?: string;
+  phoneNumber?: string;
+  dateOfBirth?: string;
+  school?: string;
+  /** Null until the first-time welcome has been dismissed. */
+  welcomeSeenAt?: string | null;
   categoryId?: string;
   categoryName?: string;
   categorySlug?: string;
@@ -28,6 +35,8 @@ type AppState = {
   bookings: Booking[];
   goals: { id: string; title: string; done: boolean }[];
   notifications: Notice[];
+  /** Server-side unread total, accurate even when more than one page of history exists. */
+  unreadCount: number;
   resources: { id: string; title: string; category: string; readTime: string; description: string; imageUrl: string | null }[];
   scholarships: { id: string; title: string; provider: string; level: string; deadline: string; eligibility: string; description: string; imageUrl: string | null }[];
 };
@@ -40,6 +49,7 @@ const initial: AppState = {
   bookings: [],
   goals: [],
   notifications: [],
+  unreadCount: 0,
   resources: [],
   scholarships: [],
 };
@@ -54,13 +64,17 @@ type ContextValue = AppState & {
   toggleGoal: (id: string) => Promise<void>;
   addGoal: (title: string) => Promise<void>;
   markRead: (id: string) => Promise<void>;
+  markAllRead: () => Promise<void>;
+  refreshNotifications: () => Promise<void>;
+  dismissWelcome: () => Promise<void>;
+  applyAccount: (user: ApiUser) => void;
   updateAvatar: (avatarUrl: string) => void;
   updateMembership: (membership: { categoryId: string; categoryName: string; categorySlug: string; subcategoryId: string; subcategoryName: string; subcategorySlug: string }) => void;
 };
 
 const Ctx = createContext<ContextValue | null>(null);
 
-function toAppUser(user: Awaited<ReturnType<typeof apiMe>>): User {
+export function toAppUser(user: Awaited<ReturnType<typeof apiMe>>): User {
   const role: AppRole = user.role === "COUNSELLOR"
     ? "counsellor"
     : user.role === "ADMIN"
@@ -80,7 +94,18 @@ function toAppUser(user: Awaited<ReturnType<typeof apiMe>>): User {
     subcategoryName: user.profile?.subcategory?.name,
     subcategorySlug: user.profile?.subcategory?.slug,
     avatarUrl: user.profile?.avatarUrl ?? null,
+    lga: user.profile?.lga ?? undefined,
+    lcda: user.profile?.lcda ?? undefined,
+    state: user.profile?.stateOfResidence ?? undefined,
+    phoneNumber: user.profile?.phoneNumber ?? undefined,
+    dateOfBirth: user.profile?.dateOfBirth ? String(user.profile.dateOfBirth).slice(0, 10) : undefined,
+    school: user.profile?.school ?? undefined,
+    welcomeSeenAt: user.welcomeSeenAt ?? null,
   };
+}
+
+function toNotices(items: { id: string; title: string; body: string; type: string; readAt: string | null }[]): Notice[] {
+  return items.map(item => ({ id: item.id, title: item.title, body: item.body, read: Boolean(item.readAt), type: item.type }));
 }
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
@@ -90,8 +115,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const refreshAccountData = useCallback(async () => {
     const generation = accountGeneration.current;
-    const [resources, scholarships, goals, notifications, appointments] = await Promise.allSettled([
-      apiGetPublicResources(), apiGetPublicScholarships(), apiListActivities("PERSONAL_GOAL"), apiListNotifications(), apiListAppointments(),
+    const [resources, scholarships, goals, notifications, unread, appointments] = await Promise.allSettled([
+      apiGetPublicResources(), apiGetPublicScholarships(), apiListActivities("PERSONAL_GOAL"), apiNotificationPage({ limit: 50 }), apiNotificationUnreadCount(), apiListAppointments(),
     ]);
     if (generation !== accountGeneration.current) return;
     setState(current => ({
@@ -99,7 +124,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       resources: resources.status === "fulfilled" ? resources.value.map(item => ({ id: item.id, title: item.title, category: item.category, readTime: item.readTime, description: item.description, imageUrl: item.imageUrl ?? null })) : current.resources,
       scholarships: scholarships.status === "fulfilled" ? scholarships.value.map(item => ({ id: item.id, title: item.title, provider: item.provider, level: item.level, deadline: item.deadline, eligibility: item.eligibility, description: item.description, imageUrl: item.imageUrl ?? null })) : current.scholarships,
       goals: goals.status === "fulfilled" ? goals.value.map(item => ({ id: item.id, title: typeof item.payload.title === "string" ? item.payload.title : "Personal goal", done: item.payload.done === true })) : current.goals,
-      notifications: notifications.status === "fulfilled" ? notifications.value.map(item => ({ id: item.id, title: item.title, body: item.body, read: Boolean(item.readAt), type: item.type })) : current.notifications,
+      notifications: notifications.status === "fulfilled" ? toNotices(notifications.value.items) : current.notifications,
+      unreadCount: unread.status === "fulfilled" ? unread.value.unread : current.unreadCount,
       bookings: appointments.status === "fulfilled" ? appointments.value.map(item => ({ id: item.id, counsellor: item.counsellor.user.displayName || "Counsellor", date: new Date(item.startsAt).toLocaleDateString(), time: new Date(item.startsAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }), startsAt: item.startsAt, topic: item.topic?.name || "Counselling", status: item.status.toLowerCase() })) : current.bookings,
     }));
   }, []);
@@ -146,6 +172,31 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(persistable)).catch(() => {});
   }, [state, loaded]);
 
+  const userId = state.user?.id;
+  const refreshNotifications = useCallback(async () => {
+    const generation = accountGeneration.current;
+    const [page, unread] = await Promise.allSettled([apiNotificationPage({ limit: 50 }), apiNotificationUnreadCount()]);
+    if (generation !== accountGeneration.current) return;
+    setState(current => ({
+      ...current,
+      notifications: page.status === "fulfilled" ? toNotices(page.value.items) : current.notifications,
+      unreadCount: unread.status === "fulfilled" ? unread.value.unread : current.unreadCount,
+    }));
+  }, []);
+
+  // In-app delivery: check for new notifications while the app is open and whenever it returns to the foreground.
+  useEffect(() => {
+    if (!userId) return;
+    let timer: ReturnType<typeof setInterval> | null = null;
+    const start = () => { if (!timer) timer = setInterval(() => { void refreshNotifications(); }, 45_000); };
+    const stop = () => { if (timer) { clearInterval(timer); timer = null; } };
+    if (NativeAppState.currentState === "active") start();
+    const subscription = NativeAppState.addEventListener("change", status => {
+      if (status === "active") { void refreshNotifications(); start(); } else stop();
+    });
+    return () => { stop(); subscription.remove(); };
+  }, [userId, refreshNotifications]);
+
   const patch = (fn: (current: AppState) => AppState) => setState(current => fn(current));
 
   const value = useMemo<ContextValue>(() => ({
@@ -180,11 +231,28 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const created = await apiCreateActivity("PERSONAL_GOAL", { title: title.trim(), done: false });
       patch(current => ({ ...current, goals: [...current.goals, { id: created.id, title: title.trim(), done: false }] }));
     },
-    markRead: async id => { await apiMarkNotificationRead(id); patch(current => ({ ...current, notifications: current.notifications.map(n => n.id === id ? { ...n, read: true } : n) })); },
+    markRead: async id => {
+      await apiReadNotification(id);
+      patch(current => {
+        const wasUnread = current.notifications.some(n => n.id === id && !n.read);
+        return { ...current, unreadCount: Math.max(0, current.unreadCount - (wasUnread ? 1 : 0)), notifications: current.notifications.map(n => n.id === id ? { ...n, read: true } : n) };
+      });
+    },
+    markAllRead: async () => {
+      await apiMarkAllNotificationsRead();
+      patch(current => ({ ...current, unreadCount: 0, notifications: current.notifications.map(n => ({ ...n, read: true })) }));
+    },
+    refreshNotifications,
+    dismissWelcome: async () => {
+      // Hide it immediately; the server stamp makes sure it is never shown again on any device.
+      patch(current => ({ ...current, user: current.user ? { ...current.user, welcomeSeenAt: current.user.welcomeSeenAt ?? new Date().toISOString() } : null }));
+      try { await apiMarkWelcomeSeen(); } catch { /* the welcome may appear once more next time if this failed */ }
+    },
+    applyAccount: account => patch(current => ({ ...current, user: toAppUser(account) })),
     updateAvatar: avatarUrl => patch(current => ({ ...current, user: current.user ? { ...current.user, avatarUrl } : null })),
     updateMembership: membership => patch(current => ({ ...current, user: current.user ? { ...current.user, ...membership } : null })),
 
-  }), [state, loaded, refreshAccountData]);
+  }), [state, loaded, refreshAccountData, refreshNotifications]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

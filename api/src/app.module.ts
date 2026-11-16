@@ -13,6 +13,7 @@ import { ActivitiesModule } from './activities/activities.module';
 import { AppointmentsModule } from './appointments/appointments.module';
 import { ContentModule } from './content/content.module';
 import { RatingsModule } from './ratings/ratings.module';
+import { NotificationsModule } from './notifications/notifications.module';
 import { validateEnvironment } from './config/env.validation';
 
 @Module({
@@ -29,6 +30,7 @@ import { validateEnvironment } from './config/env.validation';
     AppointmentsModule,
     ContentModule,
     RatingsModule,
+    NotificationsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

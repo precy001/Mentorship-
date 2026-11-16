@@ -6,7 +6,10 @@ import { router } from "expo-router";
 import { Screen, Heading, Card, Button, Avatar, Pill, Divider, InfoRow, Chip, SectionHeader, StatTile, ListGroup, ListRow } from "@/src/components/UI";
 import { useApp } from "@/src/context/AppContext";
 import { colors } from "@/src/lib/theme";
-import { apiGetMembershipCategories, apiUpdateMembership, apiUploadProfilePicture, apiListActivities, MembershipCategory } from "@/src/lib/api";
+import { apiGetMembershipCategories, apiUpdateMembership, apiUpdateProfile, apiUploadProfilePicture, apiListActivities, MembershipCategory } from "@/src/lib/api";
+import { DatePickerField } from "@/src/components/Forms";
+import { Field } from "@/src/components/UI";
+import { normalizePhone, toDateString, validateDateString, validateLength, validatePhone } from "@/src/lib/validation";
 
 export default function Profile() {
   const app = useApp();
@@ -26,7 +29,45 @@ export default function Profile() {
     catch (error) { Alert.alert("Update failed", error instanceof Error ? error.message : "Your membership could not be updated."); }
     finally { setSavingMembership(false); }
   };
-  const masked = app.user?.nin ? `•••••••${app.user.nin.slice(-4)}` : "Not linked";
+  const [name, setName] = useState(app.user?.name || "");
+  const [phone, setPhone] = useState(app.user?.phoneNumber || "");
+  const [dob, setDob] = useState(app.user?.dateOfBirth || "");
+  const [school, setSchool] = useState(app.user?.school || "");
+  const [savingDetails, setSavingDetails] = useState(false);
+  const [showDetailErrors, setShowDetailErrors] = useState(false);
+  const saved = app.user;
+  // Show the stored values again after a save or when the account is reloaded.
+  useEffect(() => {
+    setName(saved?.name || ""); setPhone(saved?.phoneNumber || ""); setDob(saved?.dateOfBirth || ""); setSchool(saved?.school || "");
+  }, [saved?.id, saved?.name, saved?.phoneNumber, saved?.dateOfBirth, saved?.school]);
+  const today = new Date();
+  const youngest = toDateString(new Date(today.getFullYear() - 13, today.getMonth(), today.getDate()));
+  const oldest = toDateString(new Date(today.getFullYear() - 120, today.getMonth(), today.getDate()));
+  const detailErrors = {
+    name: validateLength(name, "Full name", { min: 2, max: 160 }),
+    phone: validatePhone(phone, { required: false }),
+    dob: dob ? validateDateString(dob, "Date of birth", { min: oldest, max: youngest }) : null,
+    school: validateLength(school, "School or organisation", { max: 180, required: false }),
+  };
+  const detailsChanged = name.trim() !== (saved?.name || "") || normalizePhone(phone) !== normalizePhone(saved?.phoneNumber || "") || dob !== (saved?.dateOfBirth || "") || school.trim() !== (saved?.school || "");
+  const saveDetails = async () => {
+    setShowDetailErrors(true);
+    if (Object.values(detailErrors).some(Boolean)) return;
+    const changes: { displayName?: string; phoneNumber?: string; dateOfBirth?: string; school?: string } = {};
+    if (name.trim() !== (saved?.name || "")) changes.displayName = name.trim();
+    if (normalizePhone(phone) !== normalizePhone(saved?.phoneNumber || "")) changes.phoneNumber = normalizePhone(phone);
+    if (dob && dob !== (saved?.dateOfBirth || "")) changes.dateOfBirth = dob;
+    if (school.trim() !== (saved?.school || "")) changes.school = school.trim();
+    if (!Object.keys(changes).length) return;
+    try {
+      setSavingDetails(true);
+      app.applyAccount(await apiUpdateProfile(changes));
+      setShowDetailErrors(false);
+      Alert.alert("Profile saved", "Your details have been updated.");
+    } catch (error) {
+      Alert.alert("Could not save", error instanceof Error ? error.message : "Please try again.");
+    } finally { setSavingDetails(false); }
+  };
 
   const changePicture = async () => {
     if (uploading) return;
@@ -60,11 +101,6 @@ export default function Profile() {
     }
   };
 
-  const verifyNin = () => Alert.alert(
-    "NIN verification unavailable",
-    "NIN verification is not connected to an authorised verification provider yet. Your NIN has not been verified. Please try again when the verification service is configured.",
-  );
-
   const stats = [
     { label: "Saved resources", value: app.savedResources.length, icon: "book-outline" as const },
     { label: "Saved scholarships", value: app.savedScholarships.length, icon: "school-outline" as const },
@@ -94,12 +130,15 @@ export default function Profile() {
       </Card>
 
       <Card>
-        <Heading title="Identity" small subtitle="Your NIN is always shown masked." />
-        <InfoRow icon="id-card-outline" label="NIN" value={masked} />
+        <Heading title="Personal details" small subtitle="Keep your details up to date. Your email address cannot be changed here." />
+        <Field label="Full name" value={name} onChangeText={setName} required maxLength={160} autoCapitalize="words" textContentType="name" editable={!savingDetails} error={showDetailErrors ? detailErrors.name : null} />
+        <Field label="Phone number" optional value={phone} onChangeText={setPhone} keyboardType="phone-pad" maxLength={24} textContentType="telephoneNumber" placeholder="+2348012345678" editable={!savingDetails} error={showDetailErrors ? detailErrors.phone : null} />
+        <DatePickerField label="Date of birth" optional value={dob} onChange={setDob} minDate={oldest} maxDate={youngest} defaultView={`${today.getFullYear() - 20}-01-01`} error={showDetailErrors ? detailErrors.dob : null} />
+        <Field label="School or organisation" optional value={school} onChangeText={setSchool} maxLength={180} editable={!savingDetails} error={showDetailErrors ? detailErrors.school : null} />
+        <Divider />
         <InfoRow icon="location-outline" label="LGA" value={app.user?.lga || "Not provided"} />
         <InfoRow icon="map-outline" label="State" value={app.user?.state || "—"} />
-        <Divider />
-        <Button title="Verify NIN" icon="shield-checkmark-outline" variant="ghost" size="sm" onPress={verifyNin} />
+        <Button title={savingDetails ? "Saving…" : "Save details"} loading={savingDetails} disabled={!detailsChanged} onPress={() => void saveDetails()} />
       </Card>
 
       <Card>

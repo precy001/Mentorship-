@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import { RETIRED_SERVICE_AREAS, SERVICE_AREAS } from './data/service-areas';
+import { STARTER_RESOURCES, STARTER_SCHOLARSHIPS } from './data/starter-content';
 
 const prisma = new PrismaClient();
 
@@ -37,6 +38,32 @@ const topics = [
   ['personal-development', 'Personal Development'],
 ];
 
+const STARTER_MARKER = 'STARTER_CONTENT_SEEDED_V1';
+
+/**
+ * Publishes the starter resources and scholarships once. A marker row records that it has run, so:
+ *  - re-running the seed never duplicates content (the marker and the unique seedKey both guard it), and
+ *  - anything an administrator later edits, unpublishes or deletes is never put back.
+ */
+async function seedStarterContent(): Promise<void> {
+  const already = await prisma.auditLog.findFirst({ where: { action: STARTER_MARKER }, select: { id: true } });
+  if (already) {
+    console.log('Starter content was already published earlier; leaving administrator-managed content untouched.');
+    return;
+  }
+  for (const item of STARTER_RESOURCES) {
+    const { seedKey, ...data } = item;
+    await prisma.resource.upsert({ where: { seedKey }, update: {}, create: { seedKey, ...data } });
+  }
+  for (const item of STARTER_SCHOLARSHIPS) {
+    const { seedKey, leadDays, ...data } = item;
+    const deadline = new Date(Date.now() + leadDays * 24 * 60 * 60 * 1000);
+    await prisma.scholarship.upsert({ where: { seedKey }, update: {}, create: { seedKey, deadline, ...data } });
+  }
+  await prisma.auditLog.create({ data: { action: STARTER_MARKER, entityType: 'Seed', metadata: { resources: STARTER_RESOURCES.length, scholarships: STARTER_SCHOLARSHIPS.length } } });
+  console.log(`Published ${STARTER_RESOURCES.length} starter resources and ${STARTER_SCHOLARSHIPS.length} starter scholarships.`);
+}
+
 async function main(): Promise<void> {
   for (const categoryInput of categories) {
     const { subcategories, ...categoryData } = categoryInput;
@@ -66,6 +93,7 @@ async function main(): Promise<void> {
   for (const [state, lga, lcda] of SERVICE_AREAS) {
     await prisma.serviceArea.upsert({ where: { state_lga_lcda: { state, lga, lcda } }, update: {}, create: { state, lga, lcda } });
   }
+  await seedStarterContent();
   console.log('Mentorship+ reference data seeded. No user accounts or demo users were created.');
 }
 

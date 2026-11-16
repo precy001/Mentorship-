@@ -2,6 +2,7 @@ import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { AppProvider } from "@/src/context/AppContext";
 import { colors } from "@/src/lib/theme";
+import { WelcomeGate } from "@/src/components/WelcomeGate";
 
 export default function RootLayout() {
   return (
@@ -22,6 +23,7 @@ export default function RootLayout() {
         <Stack.Screen name="(counsellor)" />
         <Stack.Screen name="(admin)" />
       </Stack>
+      <WelcomeGate />
     </AppProvider>
   );
 }

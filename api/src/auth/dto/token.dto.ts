@@ -24,3 +24,10 @@ export class ResetPasswordDto {
   @MaxLength(128)
   newPassword!: string;
 }
+
+export class RefreshTokenDto {
+  @IsString()
+  @MinLength(32)
+  @MaxLength(256)
+  refreshToken!: string;
+}

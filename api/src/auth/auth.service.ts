@@ -15,12 +15,16 @@ import { MailService } from '../mail/mail.service';
 import { ServiceAreasService } from '../service-areas/service-areas.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
-import { ForgotPasswordDto, ResetPasswordDto, VerifyEmailDto } from './dto/token.dto';
+import { ForgotPasswordDto, RefreshTokenDto, ResetPasswordDto, VerifyEmailDto } from './dto/token.dto';
 import type { AuthenticatedUser } from './decorators/current-user.decorator';
 
 const BCRYPT_ROUNDS = 12;
 const EMAIL_TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
 const RESET_TOKEN_TTL_MS = 30 * 60 * 1000;
+const REFRESH_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+/** A just-rotated refresh token may be replayed briefly (a retry after a dropped response) without revoking the session. */
+const REFRESH_REUSE_GRACE_MS = 30 * 1000;
+const ACCESS_TOKEN_SECONDS = 900;
 
 type StoredProfileData = { lga?: unknown; lcda?: unknown; school?: unknown };
 
@@ -85,7 +89,7 @@ export class AuthService {
     return { message: 'Account created. Check your email for a verification link before signing in.' };
   }
 
-  async login(dto: LoginDto): Promise<{ accessToken: string; tokenType: 'Bearer'; expiresIn: number; user: AuthenticatedUser & { displayName: string | null; profile: { avatarUrl: string | null; phoneNumber: string | null; dateOfBirth: Date | null; stateOfResidence: string | null; lga: string | null; lcda: string | null; school: string | null; category: { id: string; name: string; slug: string } | null; subcategory: { id: string; name: string; slug: string } | null } | null } }> {
+  async login(dto: LoginDto) {
     const email = dto.email.trim().toLowerCase();
     const user = await this.prisma.user.findUnique({
       where: { email },
@@ -100,13 +104,15 @@ export class AuthService {
     if (user.status !== UserStatus.ACTIVE) throw new UnauthorizedException('This account is not active. Contact support for assistance.');
 
     const accessToken = await this.jwt.signAsync({ sub: user.id, email: user.email, role: user.role });
+    const refreshToken = await this.issueRefreshToken(user.id);
     await this.writeAudit(user.id, 'AUTH_LOGIN_SUCCEEDED', 'User', user.id);
     return {
       accessToken,
-      tokenType: 'Bearer',
-      expiresIn: 900,
+      refreshToken,
+      tokenType: 'Bearer' as const,
+      expiresIn: ACCESS_TOKEN_SECONDS,
       user: {
-        id: user.id, email: user.email, role: user.role, status: user.status, displayName: user.displayName,
+        id: user.id, email: user.email, role: user.role, status: user.status, displayName: user.displayName, welcomeSeenAt: user.welcomeSeenAt,
         profile: user.profile ? {
           avatarUrl: user.profile.avatarUrl,
           phoneNumber: user.profile.phoneNumber,
@@ -118,6 +124,54 @@ export class AuthService {
         } : null,
       },
     };
+  }
+
+  /** Rotates a refresh token and returns a new access token, so a session survives the 15-minute access-token lifetime. */
+  async refresh(dto: RefreshTokenDto) {
+    const tokenHash = this.hashToken(dto.refreshToken);
+    const stored = await this.prisma.authToken.findUnique({ where: { tokenHash }, include: { user: { select: { id: true, email: true, role: true, status: true, emailVerifiedAt: true } } } });
+    const invalid = () => new UnauthorizedException('Your session has expired. Please sign in again.');
+    if (!stored || stored.type !== AuthTokenType.REFRESH_SESSION) throw invalid();
+    if (stored.consumedAt) {
+      // Replay of an already-rotated token outside the grace window suggests theft: end every session for this account.
+      if (Date.now() - stored.consumedAt.getTime() > REFRESH_REUSE_GRACE_MS) {
+        await this.prisma.authToken.updateMany({ where: { userId: stored.userId, type: AuthTokenType.REFRESH_SESSION, consumedAt: null }, data: { consumedAt: new Date() } });
+        await this.writeAudit(stored.userId, 'AUTH_REFRESH_REUSE_DETECTED', 'User', stored.userId);
+      }
+      throw invalid();
+    }
+    if (stored.expiresAt <= new Date()) throw invalid();
+    if (stored.user.status !== UserStatus.ACTIVE || !stored.user.emailVerifiedAt) throw invalid();
+
+    // Only one caller can consume the token; a concurrent second caller gets count 0.
+    const consumed = await this.prisma.authToken.updateMany({ where: { id: stored.id, consumedAt: null }, data: { consumedAt: new Date() } });
+    if (consumed.count !== 1) throw invalid();
+
+    const accessToken = await this.jwt.signAsync({ sub: stored.user.id, email: stored.user.email, role: stored.user.role });
+    const refreshToken = await this.issueRefreshToken(stored.user.id);
+    return { accessToken, refreshToken, tokenType: 'Bearer' as const, expiresIn: ACCESS_TOKEN_SECONDS };
+  }
+
+  /** Ends the session that owns this refresh token. Always succeeds so a client can sign out while offline-ish or expired. */
+  async logout(dto: RefreshTokenDto): Promise<{ message: string }> {
+    await this.prisma.authToken.updateMany({ where: { tokenHash: this.hashToken(dto.refreshToken), type: AuthTokenType.REFRESH_SESSION, consumedAt: null }, data: { consumedAt: new Date() } });
+    return { message: 'Signed out.' };
+  }
+
+  /** Stamps the one-time welcome as seen. Idempotent: the first timestamp is kept. */
+  async markWelcomeSeen(userId: string): Promise<{ welcomeSeenAt: Date }> {
+    await this.prisma.user.updateMany({ where: { id: userId, welcomeSeenAt: null }, data: { welcomeSeenAt: new Date() } });
+    const user = await this.prisma.user.findUnique({ where: { id: userId }, select: { welcomeSeenAt: true } });
+    if (!user?.welcomeSeenAt) throw new UnauthorizedException('Your account could not be found. Please sign in again.');
+    return { welcomeSeenAt: user.welcomeSeenAt };
+  }
+
+  private async issueRefreshToken(userId: string): Promise<string> {
+    const rawToken = randomBytes(48).toString('base64url');
+    await this.prisma.authToken.create({ data: { userId, type: AuthTokenType.REFRESH_SESSION, tokenHash: this.hashToken(rawToken), expiresAt: new Date(Date.now() + REFRESH_TOKEN_TTL_MS) } });
+    // Opportunistic clean-up keeps the table small without a scheduler.
+    void this.prisma.authToken.deleteMany({ where: { userId, type: AuthTokenType.REFRESH_SESSION, expiresAt: { lt: new Date() } } }).catch(() => undefined);
+    return rawToken;
   }
 
   async verifyEmail(dto: VerifyEmailDto): Promise<{ message: string }> {
@@ -136,6 +190,9 @@ export class AuthService {
       this.prisma.authToken.updateMany({
         where: { userId: token.userId, type: AuthTokenType.EMAIL_VERIFICATION, consumedAt: null, id: { not: token.id } },
         data: { consumedAt: new Date() },
+      }),
+      this.prisma.userNotification.create({
+        data: { userId: token.userId, type: 'ACCOUNT', title: 'Welcome to Mentorship+', body: 'Your email is verified. Explore resources, start a private discussion with a counsellor, or book a session.' },
       }),
     ]);
     await this.writeAudit(token.userId, 'AUTH_EMAIL_VERIFIED', 'User', token.userId);
@@ -175,6 +232,8 @@ export class AuthService {
         where: { userId: token.userId, type: AuthTokenType.PASSWORD_RESET, consumedAt: null, id: { not: token.id } },
         data: { consumedAt: now },
       }),
+      // A password reset signs the account out everywhere.
+      this.prisma.authToken.updateMany({ where: { userId: token.userId, type: AuthTokenType.REFRESH_SESSION, consumedAt: null }, data: { consumedAt: now } }),
     ]);
     await this.writeAudit(token.userId, 'AUTH_PASSWORD_RESET', 'User', token.userId);
     return { message: 'Password updated. Sign in using your new password.' };
@@ -184,7 +243,7 @@ export class AuthService {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
       select: {
-        id: true, email: true, role: true, status: true, displayName: true, emailVerifiedAt: true,
+        id: true, email: true, role: true, status: true, displayName: true, emailVerifiedAt: true, welcomeSeenAt: true,
         profile: { select: {
           avatarUrl: true,
           phoneNumber: true,

@@ -4,7 +4,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
 import { Screen, Button, Field, BackLink, Segmented, Card, IconBadge } from "@/src/components/UI";
 import { colors } from "@/src/lib/theme";
-import { useApp } from "@/src/context/AppContext";
+import { toAppUser, useApp } from "@/src/context/AppContext";
 import { apiLogin, apiResendVerification } from "@/src/lib/api";
 
 type Mode = "signin" | "signup";
@@ -47,30 +47,8 @@ export default function AuthScreen() {
     setBusy(true);
     try {
       const user = await apiLogin(normalizedEmail, password);
-      const appRole =
-        user.role === "COUNSELLOR"
-          ? "counsellor"
-          : user.role === "ADMIN"
-            ? "admin"
-            : user.role === "SUPER_ADMIN"
-              ? "super_admin"
-              : "member";
-
-      // The assertion keeps this screen compatible with AppContext versions
-      // whose local role union has not yet been expanded to all server roles.
-      await login({
-        id: user.id,
-        email: user.email,
-        name: user.displayName || normalizedEmail.split("@")[0],
-        role: appRole,
-        avatarUrl: user.profile?.avatarUrl ?? null,
-        categoryId: user.profile?.category?.id,
-        categoryName: user.profile?.category?.name,
-        categorySlug: user.profile?.category?.slug,
-        subcategoryId: user.profile?.subcategory?.id,
-        subcategoryName: user.profile?.subcategory?.name,
-        subcategorySlug: user.profile?.subcategory?.slug,
-      } as Parameters<typeof login>[0]);
+      // One mapping for sign-in and session restore keeps every profile field (and the welcome flag) consistent.
+      await login(toAppUser(user));
 
       if (user.role === "COUNSELLOR") {
         router.replace("/(counsellor)");

@@ -6,6 +6,8 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
+    "icon": "./assets/brand/icon.png",
+    "backgroundColor": "#FFFFFF",
     "plugins": [
       "expo-router",
       "expo-image-picker"
@@ -15,6 +17,12 @@
     },
     "android": {
       "package": "com.guidanceplus.app",
+      "backgroundColor": "#FFFFFF",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/brand/adaptive-foreground.png",
+        "monochromeImage": "./assets/brand/adaptive-monochrome.png",
+        "backgroundColor": "#2133FF"
+      },
       "permissions": [
         "android.permission.RECORD_AUDIO"
       ]
@@ -34,6 +42,9 @@
     },
     "updates": {
       "url": "https://u.expo.dev/b3f0aa89-9026-40c6-b29c-d4a797b58a3f"
+    },
+    "web": {
+      "favicon": "./assets/brand/favicon.png"
     }
   }
 }

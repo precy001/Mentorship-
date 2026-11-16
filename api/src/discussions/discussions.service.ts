@@ -2,6 +2,7 @@ import { BadRequestException, ForbiddenException, Injectable, NotFoundException 
 import { CounsellorAvailability, DiscussionStatus, UserRole, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import type { AuthenticatedUser } from '../auth/decorators/current-user.decorator';
+import { assignWaitingDiscussions, MAX_ACTIVE_DISCUSSIONS, syncCounsellorWorkload } from './assignment.util';
 
 @Injectable()
 export class DiscussionsService {
@@ -30,10 +31,14 @@ export class DiscussionsService {
     const profile = await this.prisma.counsellorProfile.findUnique({ where: { userId } });
     if (!profile) throw new NotFoundException('Counsellor profile not found.');
     const active = await this.prisma.discussionAssignment.count({ where: { counsellorId: profile.id, releasedAt: null, discussion: { status: { in: [DiscussionStatus.ASSIGNED, DiscussionStatus.IN_PROGRESS, DiscussionStatus.WAITING_FOR_MEMBER] } } } });
-    if (availability === CounsellorAvailability.AVAILABLE && active >= 5) throw new BadRequestException('You have five active discussions and cannot accept another assignment.');
-    const updated = await this.prisma.counsellorProfile.update({ where: { id: profile.id }, data: { availability } });
-    await this.prisma.auditLog.create({ data: { actorId: userId, action: 'COUNSELLOR_AVAILABILITY_CHANGED', entityType: 'CounsellorProfile', entityId: profile.id, metadata: { availability } } });
-    return updated;
+    if (availability === CounsellorAvailability.AVAILABLE && active >= MAX_ACTIVE_DISCUSSIONS) throw new BadRequestException('You have five active discussions and cannot accept another assignment.');
+    return this.prisma.$transaction(async tx => {
+      const updated = await tx.counsellorProfile.update({ where: { id: profile.id }, data: { availability } });
+      await tx.auditLog.create({ data: { actorId: userId, action: 'COUNSELLOR_AVAILABILITY_CHANGED', entityType: 'CounsellorProfile', entityId: profile.id, metadata: { availability } } });
+      // Becoming available is the moment queued discussions for this counsellor's topics can be picked up.
+      if (availability === CounsellorAvailability.AVAILABLE) await assignWaitingDiscussions(tx, profile.id);
+      return tx.counsellorProfile.findUniqueOrThrow({ where: { id: updated.id } });
+    }, { isolationLevel: 'Serializable' });
   }
 
   async listTopics() {
@@ -179,19 +184,9 @@ export class DiscussionsService {
           data: { releasedAt: new Date(), releaseReason: status },
         });
         for (const assignment of discussion.assignments) {
-          const activeCount = await tx.discussionAssignment.count({
-            where: {
-              counsellorId: assignment.counsellorId,
-              releasedAt: null,
-              discussion: { status: { in: [DiscussionStatus.ASSIGNED, DiscussionStatus.IN_PROGRESS, DiscussionStatus.WAITING_FOR_MEMBER] } },
-            },
-          });
-          if (activeCount < 5) {
-            await tx.counsellorProfile.updateMany({
-              where: { id: assignment.counsellorId, availability: CounsellorAvailability.BUSY },
-              data: { availability: CounsellorAvailability.AVAILABLE },
-            });
-          }
+          // A freed slot returns a Busy counsellor to Available and lets the oldest waiting discussion be assigned.
+          await syncCounsellorWorkload(tx, assignment.counsellorId);
+          await assignWaitingDiscussions(tx, assignment.counsellorId);
         }
       }
 
@@ -212,7 +207,7 @@ export class DiscussionsService {
         data: { actorId: user.id, action: 'DISCUSSION_STATUS_CHANGED', entityType: 'Discussion', entityId: id, metadata: { from: discussion.status, to: status } },
       });
       return updated;
-    });
+    }, { isolationLevel: 'Serializable' });
   }
 
   private async assertAccess(user: AuthenticatedUser, discussion: { creatorId: string; assignments: { counsellor: { userId: string } }[] }) {

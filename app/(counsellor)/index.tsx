@@ -1,12 +1,13 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { Alert, Text, View } from "react-native";
+import { Alert, Pressable, Text, View } from "react-native";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Screen, Card, Button, ButtonRow, Pill, Avatar, HeroCard, SectionHeader, StatTile, Segmented, PressableCard, EmptyState, LoadingBlock } from "@/src/components/UI";
 import { colors } from "@/src/lib/theme";
 import { appointmentTone, availabilityTone, discussionIsClosed, discussionTone, formatDateTime, humanize, pluralize } from "@/src/lib/format";
 import { useApp } from "@/src/context/AppContext";
-import { apiCounsellorMe, apiCounsellorSetAvailability, apiListDiscussions, apiListAppointments, apiUpdateAppointmentStatus, CounsellorSelf, DiscussionRecord, AppointmentRecord } from "@/src/lib/api";
+import { RescheduleForm } from "@/src/components/RescheduleForm";
+import { apiCounsellorMe, apiCounsellorSetAvailability, apiListDiscussions, apiListAppointments, apiUpdateAppointmentStatus, apiRescheduleAppointment, CounsellorSelf, DiscussionRecord, AppointmentRecord } from "@/src/lib/api";
 
 type Availability = "AVAILABLE" | "OFFLINE" | "ON_LEAVE";
 const CAPACITY = 5;
@@ -20,6 +21,7 @@ export default function CounsellorWorkspace() {
   const [refreshing, setRefreshing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const [reschedulingId, setReschedulingId] = useState<string | null>(null);
 
   useEffect(() => {
     if (app.sessionLoading) return;
@@ -49,6 +51,12 @@ export default function CounsellorWorkspace() {
     finally { setUpdatingId(null); }
   };
 
+  const proposeNewTime = async (item: AppointmentRecord, startsAt: string, endsAt: string) => {
+    try { setUpdatingId(item.id); await apiRescheduleAppointment(item.id, startsAt, endsAt); setReschedulingId(null); await refresh(); Alert.alert("New time sent", "The member will be asked to confirm it."); }
+    catch (error) { Alert.alert("Could not reschedule", error instanceof Error ? error.message : "Please choose another time."); }
+    finally { setUpdatingId(null); }
+  };
+
   const signOut = () => Alert.alert("Sign out?", "Return to sign in?", [{ text: "Stay", style: "cancel" }, { text: "Sign out", onPress: async () => { await app.logout(); router.replace({ pathname: "/auth", params: { mode: "signin", signedOut: "1" } }); } }]);
 
   const active = discussions.filter(item => !discussionIsClosed(item.status));
@@ -65,6 +73,10 @@ export default function CounsellorWorkspace() {
         <Text style={{ color: colors.muted, fontSize: 13 }}>Welcome back</Text>
         <Text accessibilityRole="header" numberOfLines={1} style={{ color: colors.ink, fontSize: 20, fontWeight: "800", letterSpacing: -0.4 }}>{app.user?.name || "Counsellor"}</Text>
       </View>
+      <Pressable accessibilityRole="button" accessibilityLabel={app.unreadCount ? `Notifications, ${app.unreadCount} unread` : "Notifications"} onPress={() => router.push({ pathname: "/feature/[slug]", params: { slug: "notifications" } })} style={{ width: 44, height: 44, borderRadius: 14, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.line, alignItems: "center", justifyContent: "center" }}>
+        <Ionicons name="notifications-outline" size={21} color={colors.ink} />
+        {app.unreadCount > 0 ? <View style={{ position: "absolute", right: 3, top: 3, minWidth: 18, height: 18, borderRadius: 9, paddingHorizontal: 4, backgroundColor: colors.primary, alignItems: "center", justifyContent: "center" }}><Text style={{ color: colors.white, fontSize: 10, fontWeight: "800" }}>{app.unreadCount > 9 ? "9+" : app.unreadCount}</Text></View> : null}
+      </Pressable>
       <Button title="Sign out" variant="ghost" size="sm" icon="log-out-outline" onPress={signOut} />
     </View>
 
@@ -117,6 +129,10 @@ export default function CounsellorWorkspace() {
           <Ionicons name="calendar-outline" size={16} color={colors.muted} />
           <Text style={{ color: colors.muted, flex: 1, fontSize: 13 }}>{item.topic?.name || "Counselling"} · {formatDateTime(item.startsAt)}</Text>
         </View>
+        {item.status === "RESCHEDULED" ? <Text style={{ color: colors.muted, fontSize: 13 }}>{item.rescheduledById === app.user?.id ? "Waiting for the member to confirm your proposed time." : "The member proposed a new time."}</Text> : null}
+        {item.status === "RESCHEDULED" && item.rescheduledById !== app.user?.id ? <Button title="Confirm new time" icon="checkmark" loading={updatingId === item.id} disabled={!!updatingId} onPress={() => void updateAppointment(item, "CONFIRMED", "Could not confirm")} /> : null}
+        {["REQUESTED", "CONFIRMED", "RESCHEDULED"].includes(item.status) && new Date(item.startsAt).getTime() > Date.now() ? <Button title={reschedulingId === item.id ? "Hide reschedule" : "Propose new time"} icon="time-outline" variant="secondary" size="sm" disabled={!!updatingId} onPress={() => setReschedulingId(current => current === item.id ? null : item.id)} /> : null}
+        {reschedulingId === item.id ? <RescheduleForm startsAt={item.startsAt} endsAt={item.endsAt} busy={updatingId === item.id} onSubmit={(a, b) => void proposeNewTime(item, a, b)} onClose={() => setReschedulingId(null)} /> : null}
         {item.status === "REQUESTED" ? <Button title="Confirm appointment" icon="checkmark" loading={updatingId === item.id} disabled={!!updatingId} onPress={() => void updateAppointment(item, "CONFIRMED", "Could not confirm")} /> : null}
         {item.status === "CONFIRMED" ? <ButtonRow>
           <Button grow title="Complete" loading={updatingId === item.id} disabled={!!updatingId} onPress={() => void updateAppointment(item, "COMPLETED", "Could not complete")} />

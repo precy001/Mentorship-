@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Image,
+  ImageSourcePropType,
   Modal,
   Pressable,
   ScrollView,
@@ -333,12 +334,15 @@ export function SmartImage({
   uri,
   aspectRatio = 16 / 9,
   fallbackIcon = "image-outline",
+  fallbackSource,
   radius = radii.md,
   style,
   accessibilityLabel,
 }: {
   uri?: string | null;
   aspectRatio?: number;
+  /** Bundled artwork shown when there is no uploaded image or it fails to load. */
+  fallbackSource?: ImageSourcePropType;
   fallbackIcon?: React.ComponentProps<typeof Ionicons>["name"];
   radius?: number;
   style?: ViewStyle;
@@ -368,6 +372,8 @@ export function SmartImage({
           onLoadEnd={() => setLoading(false)}
           onError={() => { setFailed(true); setLoading(false); }}
         />
+      ) : fallbackSource ? (
+        <Image source={fallbackSource} resizeMode="cover" style={StyleSheet.absoluteFill} />
       ) : (
         <Ionicons name={fallbackIcon} size={28} color={colors.primary} style={{ opacity: 0.55 }} />
       )}

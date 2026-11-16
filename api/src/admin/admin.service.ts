@@ -8,6 +8,8 @@ import { MailService } from '../mail/mail.service';
 import { StorageService, type UploadableImage } from '../storage/storage.service';
 import { ServiceAreasService } from '../service-areas/service-areas.service';
 import { CONTENT_IMAGE_FOLDER } from '../content/content.constants';
+import { createNotification } from '../notifications/notifications.service';
+import { assignWaitingDiscussions, countActiveDiscussions, MAX_ACTIVE_DISCUSSIONS } from '../discussions/assignment.util';
 
 @Injectable()
 export class AdminService {
@@ -172,6 +174,10 @@ export class AdminService {
     const activeAssignments = await tx.discussionAssignment.findMany({ where: { counsellorId, releasedAt: null, discussion: { status: { in: [DiscussionStatus.ASSIGNED, DiscussionStatus.IN_PROGRESS, DiscussionStatus.WAITING_FOR_MEMBER] } } }, select: { discussionId: true } });
     if (activeAssignments.length) {
       const discussionIds = [...new Set(activeAssignments.map(item => item.discussionId))];
+      const affectedDiscussions = await tx.discussion.findMany({ where: { id: { in: discussionIds } }, select: { creatorId: true, title: true } });
+      for (const affected of affectedDiscussions) {
+        await createNotification(tx, affected.creatorId, 'Your discussion is being reassigned', `Your counsellor is no longer available for “${affected.title}”. We will assign another counsellor as soon as one is available.`, 'DISCUSSION');
+      }
       await tx.discussion.updateMany({ where: { id: { in: discussionIds } }, data: { status: DiscussionStatus.REASSIGNMENT_REQUIRED } });
       await tx.discussionAssignment.updateMany({ where: { counsellorId, discussionId: { in: discussionIds }, releasedAt: null }, data: { releasedAt: new Date(), releaseReason: reason } });
     }
@@ -197,6 +203,7 @@ export class AdminService {
       const updated = await tx.user.update({ where: { id: userId }, data: { role }, select: { id: true, email: true, displayName: true, role: true, status: true } });
       if (role === UserRole.COUNSELLOR) {
         await tx.counsellorProfile.upsert({ where: { userId }, create: { userId, availability: CounsellorAvailability.OFFLINE }, update: {} });
+        await createNotification(tx, userId, 'You are now a counsellor', 'An administrator gave your account counsellor access. Ask an administrator to assign your topics, then set yourself to Available to receive discussions.', 'COUNSELLOR');
       } else if (target.counsellorProfile) {
         // Preserve history, release active work and let an administrator reassign affected discussions.
         await this.releaseCounsellorWork(tx, target.counsellorProfile.id, 'COUNSELLOR_ROLE_REVOKED');
@@ -262,6 +269,8 @@ export class AdminService {
       await tx.counsellorTopicAssignment.deleteMany({ where: { counsellorId: profile.id } });
       await tx.counsellorTopicAssignment.createMany({ data: topicIds.map(topicId => ({ counsellorId: profile.id, topicId, assignedById: invitation.invitedById })) });
       await tx.auditLog.create({ data: { actorId: user.id, action: 'COUNSELLOR_INVITATION_ACCEPTED', entityType: 'User', entityId: user.id, metadata: { invitedById: invitation.invitedById, topicIds } } });
+      await createNotification(tx, user.id, 'Welcome, counsellor', 'Your invitation was accepted. Set your availability to Available when you are ready to receive discussions.', 'COUNSELLOR');
+      await createNotification(tx, invitation.invitedById, 'Counsellor invitation accepted', `${user.email} accepted the counsellor invitation.`, 'COUNSELLOR');
       return updated;
     });
   }
@@ -349,7 +358,9 @@ export class AdminService {
       await tx.counsellorTopicAssignment.deleteMany({ where: { counsellorId: counsellor.id } });
       if (topicIds.length) await tx.counsellorTopicAssignment.createMany({ data: [...new Set(topicIds)].map(topicId => ({ counsellorId: counsellor.id, topicId, assignedById: actor.id })) });
       await tx.auditLog.create({ data: { actorId: actor.id, action: 'COUNSELLOR_TOPICS_UPDATED', entityType: 'CounsellorProfile', entityId: counsellor.id, metadata: { topicIds } } });
-    });
+      // New topics may match discussions that are already waiting for a counsellor.
+      await assignWaitingDiscussions(tx, counsellor.id);
+    }, { isolationLevel: 'Serializable' });
     return this.prisma.counsellorProfile.findUnique({ where: { id: counsellor.id }, include: { topics: { include: { topic: true } } } });
   }
 
@@ -360,11 +371,15 @@ export class AdminService {
     const profile = await this.prisma.counsellorProfile.findUnique({ where: { userId } });
     if (!profile) throw new NotFoundException('Counsellor profile not found.');
     if (availability === CounsellorAvailability.AVAILABLE) {
-      const active = await this.prisma.discussionAssignment.count({ where: { counsellorId: profile.id, releasedAt: null, discussion: { status: { in: ['ASSIGNED', 'IN_PROGRESS', 'WAITING_FOR_MEMBER'] } } } });
-      if (active >= 5) throw new BadRequestException('This counsellor already has five active discussions and cannot be marked available.');
+      const active = await countActiveDiscussions(this.prisma, profile.id);
+      if (active >= MAX_ACTIVE_DISCUSSIONS) throw new BadRequestException('This counsellor already has five active discussions and cannot be marked available.');
     }
-    const updated = await this.prisma.counsellorProfile.update({ where: { id: profile.id }, data: { availability } });
-    await this.audit(actor.id, 'COUNSELLOR_AVAILABILITY_CHANGED', 'CounsellorProfile', profile.id);
+    const updated = await this.prisma.$transaction(async tx => {
+      const result = await tx.counsellorProfile.update({ where: { id: profile.id }, data: { availability } });
+      await tx.auditLog.create({ data: { actorId: actor.id, action: 'COUNSELLOR_AVAILABILITY_CHANGED', entityType: 'CounsellorProfile', entityId: profile.id, metadata: { availability } } });
+      if (availability === CounsellorAvailability.AVAILABLE) await assignWaitingDiscussions(tx, profile.id);
+      return result;
+    }, { isolationLevel: 'Serializable' });
     return updated;
   }
 
