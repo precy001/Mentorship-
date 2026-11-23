@@ -10,7 +10,7 @@ import { Button } from "@/src/components/UI";
 type Step = { icon: React.ComponentProps<typeof Ionicons>["name"]; title: string; body: string };
 
 const MEMBER_STEPS: Step[] = [
-  { icon: "compass-outline", title: "Explore resources and scholarships", body: "Practical guides and funding opportunities, ready to read." },
+  { icon: "compass-outline", title: "Explore resources, scholarships and grants", body: "Practical guides and funding opportunities chosen for your membership group." },
   { icon: "chatbubble-ellipses-outline", title: "Talk to a counsellor", body: "Start a private discussion; we match you with a counsellor for your topic." },
   { icon: "calendar-outline", title: "Book a session", body: "Pick a topic and a time and we will find a counsellor who is free." },
 ];

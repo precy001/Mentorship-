@@ -8,7 +8,8 @@ import { daysUntil, formatDisplayDate } from "@/src/lib/validation";
 import { resourceArt, scholarshipArt } from "@/src/lib/contentArt";
 
 export type ResourceItem = { id: string; title: string; category: string; readTime: string; description: string; imageUrl?: string | null };
-export type ScholarshipItem = { id: string; title: string; provider: string; level: string; deadline: string; eligibility: string; description: string; imageUrl?: string | null };
+export type ScholarshipItem = { id: string; title: string; provider: string; level: string; deadline: string; eligibility: string; description: string; imageUrl?: string | null; applyUrl?: string | null };
+export type GrantItem = { id: string; title: string; provider: string; amount: string | null; deadline: string | null; eligibility: string; description: string; imageUrl?: string | null; applyUrl?: string | null };
 
 const cardStyle = {
   backgroundColor: colors.surface,
@@ -81,7 +82,7 @@ export function ResourceCard({ item, saved, onToggleSave, onPress }: { item: Res
     </View>
   );
   // Cards that are not tappable as a whole (Explore, Saved) keep their own Read more / Save controls.
-  return onPress ? <Pressable accessibilityRole="button" accessibilityLabel={`${item.title}, ${item.category}`} onPress={onPress} style={({ pressed }) => ({ opacity: pressed ? 0.92 : 1 })}>{content}</Pressable> : content;
+  return onPress ? <Pressable accessibilityRole="button" accessibilityLabel={`${item.title}, ${item.category}`} accessibilityHint="Opens the full resource" onPress={onPress} style={({ pressed }) => ({ opacity: pressed ? 0.92 : 1 })}>{content}</Pressable> : content;
 }
 
 export function ScholarshipCard({ item, saved, onToggleSave, onPress }: { item: ScholarshipItem; saved?: boolean; onToggleSave?: () => void; onPress?: () => void }) {
@@ -110,7 +111,33 @@ export function ScholarshipCard({ item, saved, onToggleSave, onPress }: { item: 
       </View>
     </View>
   );
-  return onPress ? <Pressable accessibilityRole="button" accessibilityLabel={`${item.title}, ${item.provider}`} onPress={onPress} style={({ pressed }) => ({ opacity: pressed ? 0.92 : 1 })}>{content}</Pressable> : content;
+  return onPress ? <Pressable accessibilityRole="button" accessibilityLabel={`${item.title}, ${item.provider}`} accessibilityHint="Opens the full details" onPress={onPress} style={({ pressed }) => ({ opacity: pressed ? 0.92 : 1 })}>{content}</Pressable> : content;
+}
+
+/** Grants: amount and closing date up front, because those decide whether a member reads on. */
+export function GrantCard({ item, saved, onToggleSave, onPress }: { item: GrantItem; saved?: boolean; onToggleSave?: () => void; onPress?: () => void }) {
+  const content = (
+    <View style={cardStyle}>
+      <SmartImage uri={item.imageUrl} fallbackSource={resourceArt("Business")} aspectRatio={16 / 9} radius={0} fallbackIcon="cash-outline" accessibilityLabel={`Image for ${item.title}`} />
+      <View style={{ padding: 16, gap: 10 }}>
+        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, flex: 1 }}>
+            {item.amount ? <Pill label={item.amount} tone="green" /> : null}
+            {item.deadline ? <DeadlineBadge deadline={item.deadline} /> : <Pill label="Open all year" tone="blue" />}
+          </View>
+          {onToggleSave ? <SaveButton saved={!!saved} onPress={onToggleSave} label={item.title} /> : null}
+        </View>
+        <Text style={{ color: colors.ink, fontSize: 18, lineHeight: 24, fontWeight: "800", letterSpacing: -0.2 }}>{item.title}</Text>
+        <Text style={{ color: colors.primaryDark, fontSize: 13, fontWeight: "700" }}>{item.provider}</Text>
+        <ExpandableText text={item.description} label={item.title} style={{ color: colors.muted, lineHeight: 21 }} />
+        <View style={{ backgroundColor: colors.surfaceSecondary, borderRadius: 14, padding: 12, gap: 4 }}>
+          <Text style={{ color: colors.ink, fontSize: 12, fontWeight: "800" }}>Who can apply</Text>
+          <ExpandableText text={item.eligibility} label={`${item.title} eligibility`} lines={3} style={{ color: colors.muted, fontSize: 12, lineHeight: 18 }} />
+        </View>
+      </View>
+    </View>
+  );
+  return onPress ? <Pressable accessibilityRole="button" accessibilityLabel={`${item.title}, ${item.provider}${item.amount ? `, ${item.amount}` : ""}`} accessibilityHint="Opens the full details" onPress={onPress} style={({ pressed }) => ({ opacity: pressed ? 0.92 : 1 })}>{content}</Pressable> : content;
 }
 
 /** Large banner for the most relevant published item. The dark strip keeps text legible on any photo. */

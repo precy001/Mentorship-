@@ -4,7 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 
 type UploadedImage = { buffer: Buffer; mimetype: string };
-type ProfileUpdate = { displayName?: string; phoneNumber?: string; dateOfBirth?: string; school?: string };
+type ProfileUpdate = { displayName?: string; phoneNumber?: string; dateOfBirth?: string; school?: string; nin?: string };
 
 const MIN_AGE_YEARS = 13;
 
@@ -58,6 +58,12 @@ export class ProfileService {
     const existingData = user.profile?.profileData;
     const profileData: Prisma.JsonObject = existingData && typeof existingData === 'object' && !Array.isArray(existingData) ? { ...(existingData as Prisma.JsonObject) } : {};
     if (input.school !== undefined) profileData.school = input.school.trim() || null;
+    if (input.nin !== undefined) {
+      const nin = input.nin.replace(/[\s-]/g, '');
+      if (!/^\d{11}$/.test(nin)) throw new BadRequestException('Enter your 11-digit National Identification Number (NIN).');
+      profileData.nin = nin;
+    }
+    const profileDataChanged = input.school !== undefined || input.nin !== undefined;
 
     const phoneNumber = input.phoneNumber === undefined ? undefined : input.phoneNumber.trim() || null;
 
@@ -69,7 +75,7 @@ export class ProfileService {
         update: {
           ...(phoneNumber !== undefined ? { phoneNumber } : {}),
           ...(dateOfBirth !== undefined ? { dateOfBirth } : {}),
-          ...(input.school !== undefined ? { profileData } : {}),
+          ...(profileDataChanged ? { profileData } : {}),
         },
       });
       await tx.auditLog.create({ data: { actorId: userId, action: 'PROFILE_UPDATED', entityType: 'UserProfile', entityId: userId, metadata: { fields: Object.keys(input) } } });

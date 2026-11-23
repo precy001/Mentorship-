@@ -1,7 +1,8 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { AppState as NativeAppState } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { ApiError, apiLogout, apiMe, apiGetPublicResources, apiGetPublicScholarships, apiListActivities, apiNotificationPage, apiNotificationUnreadCount, apiMarkAllNotificationsRead, apiReadNotification, apiMarkWelcomeSeen, apiCreateActivity, apiUpdateActivity, apiListAppointments, type ApiUser } from "../lib/api";
+import { isForMember } from "../lib/audience";
+import { ApiError, apiLogout, apiMe, apiGetPublicResources, apiGetPublicScholarships, apiGetPublicGrants, apiListActivities, apiNotificationPage, apiNotificationUnreadCount, apiMarkAllNotificationsRead, apiReadNotification, apiMarkWelcomeSeen, apiCreateActivity, apiUpdateActivity, apiListAppointments, type ApiUser } from "../lib/api";
 
 type AppRole = "member" | "student" | "counsellor" | "admin" | "super_admin";
 type User = {
@@ -9,6 +10,7 @@ type User = {
   email?: string;
   name: string;
   role: AppRole;
+  /** National Identification Number. Required for members; collected, not verified. */
   nin?: string;
   lga?: string;
   lcda?: string;
@@ -28,17 +30,25 @@ type User = {
 };
 type Booking = { id: string; counsellor: string; date: string; time: string; startsAt: string; topic: string; status: string };
 type Notice = { id: string; title: string; body: string; read: boolean; type: string };
+type AudienceFields = { audienceCategories?: string[]; audienceSubcategories?: string[] };
+/** A private wellbeing check-in (mood + optional journal note). */
+export type Checkin = { id: string; mood: string; note: string; createdAt: string };
+export type GrantSummary = { id: string; title: string; provider: string; amount: string | null; deadline: string | null; eligibility: string; description: string; imageUrl: string | null; applyUrl: string | null } & AudienceFields;
 type AppState = {
   user: User | null;
   savedResources: string[];
   savedScholarships: string[];
+  savedGrants: string[];
   bookings: Booking[];
   goals: { id: string; title: string; done: boolean }[];
   notifications: Notice[];
   /** Server-side unread total, accurate even when more than one page of history exists. */
   unreadCount: number;
-  resources: { id: string; title: string; category: string; readTime: string; description: string; imageUrl: string | null }[];
-  scholarships: { id: string; title: string; provider: string; level: string; deadline: string; eligibility: string; description: string; imageUrl: string | null }[];
+  resources: ({ id: string; title: string; category: string; readTime: string; description: string; imageUrl: string | null } & AudienceFields)[];
+  scholarships: ({ id: string; title: string; provider: string; level: string; deadline: string; eligibility: string; description: string; imageUrl: string | null; applyUrl: string | null } & AudienceFields)[];
+  grants: GrantSummary[];
+  /** Newest first. Kept here so every screen (wellbeing, profile, home) updates the moment a check-in is saved. */
+  checkins: Checkin[];
 };
 
 const STORAGE_KEY = "mentorship-plus-state-v2";
@@ -46,12 +56,15 @@ const initial: AppState = {
   user: null,
   savedResources: [],
   savedScholarships: [],
+  savedGrants: [],
   bookings: [],
   goals: [],
   notifications: [],
   unreadCount: 0,
   resources: [],
   scholarships: [],
+  grants: [],
+  checkins: [],
 };
 
 type ContextValue = AppState & {
@@ -61,6 +74,9 @@ type ContextValue = AppState & {
   logout: () => Promise<void>;
   toggleResource: (id: string) => void;
   toggleScholarship: (id: string) => void;
+  toggleGrant: (id: string) => void;
+  /** Saves a wellbeing check-in to the account and shows it everywhere straight away. */
+  addCheckin: (mood: string, note: string) => Promise<Checkin>;
   toggleGoal: (id: string) => Promise<void>;
   addGoal: (title: string) => Promise<void>;
   markRead: (id: string) => Promise<void>;
@@ -100,8 +116,15 @@ export function toAppUser(user: Awaited<ReturnType<typeof apiMe>>): User {
     phoneNumber: user.profile?.phoneNumber ?? undefined,
     dateOfBirth: user.profile?.dateOfBirth ? String(user.profile.dateOfBirth).slice(0, 10) : undefined,
     school: user.profile?.school ?? undefined,
+    nin: user.profile?.nin ?? undefined,
     welcomeSeenAt: user.welcomeSeenAt ?? null,
   };
+}
+
+function toCheckins(items: { id: string; payload: Record<string, unknown>; createdAt: string }[]): Checkin[] {
+  return items
+    .map(item => ({ id: item.id, mood: typeof item.payload.mood === "string" ? item.payload.mood : "Check-in", note: typeof item.payload.note === "string" ? item.payload.note : "", createdAt: item.createdAt }))
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 }
 
 function toNotices(items: { id: string; title: string; body: string; type: string; readAt: string | null }[]): Notice[] {
@@ -115,14 +138,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const refreshAccountData = useCallback(async () => {
     const generation = accountGeneration.current;
-    const [resources, scholarships, goals, notifications, unread, appointments] = await Promise.allSettled([
+    const [resources, scholarships, goals, notifications, unread, appointments, grants, checkins] = await Promise.allSettled([
       apiGetPublicResources(), apiGetPublicScholarships(), apiListActivities("PERSONAL_GOAL"), apiNotificationPage({ limit: 50 }), apiNotificationUnreadCount(), apiListAppointments(),
+      apiGetPublicGrants(), apiListActivities("WELLBEING_CHECKIN"),
     ]);
     if (generation !== accountGeneration.current) return;
+    const audience = (item: AudienceFields) => ({ audienceCategories: item.audienceCategories ?? [], audienceSubcategories: item.audienceSubcategories ?? [] });
     setState(current => ({
       ...current,
-      resources: resources.status === "fulfilled" ? resources.value.map(item => ({ id: item.id, title: item.title, category: item.category, readTime: item.readTime, description: item.description, imageUrl: item.imageUrl ?? null })) : current.resources,
-      scholarships: scholarships.status === "fulfilled" ? scholarships.value.map(item => ({ id: item.id, title: item.title, provider: item.provider, level: item.level, deadline: item.deadline, eligibility: item.eligibility, description: item.description, imageUrl: item.imageUrl ?? null })) : current.scholarships,
+      resources: resources.status === "fulfilled" ? resources.value.map(item => ({ id: item.id, title: item.title, category: item.category, readTime: item.readTime, description: item.description, imageUrl: item.imageUrl ?? null, ...audience(item) })) : current.resources,
+      scholarships: scholarships.status === "fulfilled" ? scholarships.value.map(item => ({ id: item.id, title: item.title, provider: item.provider, level: item.level, deadline: item.deadline, eligibility: item.eligibility, description: item.description, imageUrl: item.imageUrl ?? null, applyUrl: item.applyUrl ?? null, ...audience(item) })) : current.scholarships,
+      grants: grants.status === "fulfilled" ? grants.value.map(item => ({ id: item.id, title: item.title, provider: item.provider, amount: item.amount ?? null, deadline: item.deadline ?? null, eligibility: item.eligibility, description: item.description, imageUrl: item.imageUrl ?? null, applyUrl: item.applyUrl ?? null, ...audience(item) })) : current.grants,
+      checkins: checkins.status === "fulfilled" ? toCheckins(checkins.value) : current.checkins,
       goals: goals.status === "fulfilled" ? goals.value.map(item => ({ id: item.id, title: typeof item.payload.title === "string" ? item.payload.title : "Personal goal", done: item.payload.done === true })) : current.goals,
       notifications: notifications.status === "fulfilled" ? toNotices(notifications.value.items) : current.notifications,
       unreadCount: unread.status === "fulfilled" ? unread.value.unread : current.unreadCount,
@@ -143,7 +170,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             ...parsed,
             user: null,
             // Restore only saved-item preferences; all account data comes from the API.
-            resources: [], scholarships: [], notifications: [], bookings: [], goals: [],
+            resources: [], scholarships: [], grants: [], checkins: [], notifications: [], bookings: [], goals: [],
+            savedGrants: Array.isArray(parsed.savedGrants) ? parsed.savedGrants : [],
           });
         }
 
@@ -168,7 +196,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   // Never persist the authenticated user here. The API token + /auth/me are the source of truth.
   useEffect(() => {
     if (!loaded) return;
-    const { user: _user, ...persistable } = state;
+    // Private journal check-ins are never written to device storage; they are always reloaded from the account.
+    const { user: _user, checkins: _checkins, ...persistable } = state;
     AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(persistable)).catch(() => {});
   }, [state, loaded]);
 
@@ -201,6 +230,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const value = useMemo<ContextValue>(() => ({
     ...state,
+    // Members only see content meant for them ("Who is this for?" set by administrators).
+    resources: state.resources.filter(item => isForMember(item, state.user)),
+    scholarships: state.scholarships.filter(item => isForMember(item, state.user)),
+    grants: state.grants.filter(item => isForMember(item, state.user)),
     sessionLoading: !loaded,
     // A newly authenticated account starts with a clean, account-scoped client state.
     refreshAccountData,
@@ -221,6 +254,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     },
     toggleResource: id => patch(current => ({ ...current, savedResources: current.savedResources.includes(id) ? current.savedResources.filter(x => x !== id) : [...current.savedResources, id] })),
     toggleScholarship: id => patch(current => ({ ...current, savedScholarships: current.savedScholarships.includes(id) ? current.savedScholarships.filter(x => x !== id) : [...current.savedScholarships, id] })),
+    toggleGrant: id => patch(current => ({ ...current, savedGrants: current.savedGrants.includes(id) ? current.savedGrants.filter(x => x !== id) : [...current.savedGrants, id] })),
+    addCheckin: async (mood, note) => {
+      const created = await apiCreateActivity("WELLBEING_CHECKIN", { mood, note });
+      const checkin: Checkin = { id: created.id, mood, note, createdAt: created.createdAt || new Date().toISOString() };
+      patch(current => ({ ...current, checkins: [checkin, ...current.checkins.filter(item => item.id !== checkin.id)] }));
+      return checkin;
+    },
     toggleGoal: async id => {
       const goal = state.goals.find(item => item.id === id);
       if (!goal) return;

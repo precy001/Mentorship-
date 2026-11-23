@@ -1,6 +1,6 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useRef, useState } from "react";
 import { Alert, Text, View } from "react-native";
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import { Screen, Heading, Card, Button, Pill, Field, HeroCard, Chip, SectionHeader, PressableCard, EmptyState, LoadingBlock, ErrorState } from "@/src/components/UI";
 import { colors } from "@/src/lib/theme";
 import { discussionTone, humanize, pluralize } from "@/src/lib/format";
@@ -32,7 +32,8 @@ export default function Counselling() {
   const [showErrors, setShowErrors] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
-  const refresh = useCallback(async () => {
+  const loadedOnce = useRef(false);
+  const refresh = useCallback(async (silent = false) => {
     try {
       const [availableTopics, ownDiscussions] = await Promise.all([
         apiDiscussionTopics(),
@@ -51,15 +52,18 @@ export default function Counselling() {
     } catch (error) {
       const text = error instanceof Error ? error.message : "Please try again.";
       setLoadError(text);
-      Alert.alert("Counselling unavailable", text);
+      if (!silent) Alert.alert("Counselling unavailable", text);
     } finally {
       setLoading(false);
     }
   }, []);
 
-  useEffect(() => {
-    void refresh();
-  }, [refresh]);
+  // Load on first visit, then quietly refresh each time the tab is shown again, so new replies and status
+  // changes appear without pulling to refresh.
+  useFocusEffect(useCallback(() => {
+    void refresh(loadedOnce.current);
+    loadedOnce.current = true;
+  }, [refresh]));
 
   const onRefresh = async () => {
     setRefreshing(true);

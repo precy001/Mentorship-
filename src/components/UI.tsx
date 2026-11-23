@@ -41,7 +41,7 @@ export function Screen({
   scrollRef?: React.Ref<ScrollView>;
   /** Pads the top by the status-bar / notch height. Turn off when a parent already did. */
   safeTop?: boolean;
-  /** Leaves room for the floating bottom tab bar. */
+  /** A screen inside the bottom tabs (the docked tab bar already handles the bottom safe area). */
   tabBar?: boolean;
   /** Adds pull-to-refresh. */
   onRefresh?: () => void | Promise<unknown>;
@@ -50,7 +50,8 @@ export function Screen({
   const insets = useSafeAreaInsets();
   const padding = {
     paddingTop: (safeTop ? insets.top : 0) + spacing.lg,
-    paddingBottom: tabBar ? 104 + insets.bottom : 40 + insets.bottom,
+    // Tab screens end at the top of the docked tab bar, which already accounts for the bottom inset.
+    paddingBottom: tabBar ? 32 : 40 + insets.bottom,
   };
   return scroll ? (
     <ScrollView

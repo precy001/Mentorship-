@@ -1,63 +1,52 @@
-# Changelog: sign-in, verification-link and dashboard fixes
+# Changelog — grants, audience targeting, NIN, insights fix and UX improvements
 
-## What was wrong
+## API (`api/`)
+- **New `Grant` model** (`prisma/schema.prisma`) with optional amount, optional deadline (open all year), eligibility,
+  description, optional official link, image and audience.
+- **Audience fields** `audienceCategories` / `audienceSubcategories` (membership slugs; both empty = everyone) on
+  `Resource`, `Scholarship` and `Grant`. Scholarships also get an optional `applyUrl`.
+- **Migration `20261123120000_grants_and_audience`** (additive only): adds the columns and the `Grant` table, sets
+  existing scholarships to Education & Learning, and inserts 5 placeholder grants (labelled "placeholder listing").
+  It is safe to run twice.
+- **Endpoints:** `GET /content/grants` (public: open grants, soonest deadline first) and
+  `GET|POST /admin/grants`, `PUT|DELETE /admin/grants/:id`, `PATCH /admin/grants/:id/active`.
+  The dashboard stats now include `grants`.
+- **Audience on create/update** for resources, scholarships and grants. Each group is checked against real
+  membership categories and subcategories. If omitted on create, the type's default is used; if omitted on update,
+  the audience is unchanged. Older app versions keep working.
+- **NIN:** required on registration (exactly 11 digits; spaces and dashes are ignored) and editable on
+  `PATCH /profile`, but it can't be cleared. It is stored in the profile data, returned with the member's own
+  account, and kept out of audit logs. The shared rules are in `src/common/nin.ts`.
+- **Tests:** `test/grants-audience.spec.ts` and `test/nin.spec.ts` (18 new tests; 90 in total, all passing).
 
-1. **Blank screen after signing in (Android).** Two parts of the app navigated at the same moment after sign-in.
-   The splash screen, still mounted underneath the sign-in screen, redirected to the dashboard as soon as the user
-   was set. The sign-in screen then redirected again once its data finished loading. On Android these overlapping
-   transitions could leave the screen blank. Restarting worked because a restored session only navigates once.
-2. **Admin dashboard appearing twice (iPhone).** The same double navigation. The second redirect targeted the admin
-   area while it was already open, so Expo Router pushed a second copy of the dashboard on top of the first.
-3. **Blank screen after tapping the verification link (Android).** When the link is tapped while the app is still
-   in the background (normal right after registering), Android delivers it before the app is back in the
-   foreground. Opening a screen at that moment can leave a blank screen.
-4. Related: the splash stayed underneath the dashboard. Pressing Android Back from a dashboard returned to a splash
-   stuck on "Opening your space…". Signing out also navigated twice (once from the screen and once from its own
-   guard).
+## App
+- **Mood insights fix:** check-ins are kept in shared state (`AppContext.checkins`, `addCheckin`), so the profile
+  count, wellbeing screen and home update immediately. New "Your week" insights (`src/lib/mood.ts`, with unit tests).
+  Journal notes are not written to device storage.
+- **Tab bar:** a solid, docked bar (`app/(student)/_layout.tsx`). Tab screens' bottom padding was adjusted
+  (`src/components/UI.tsx`).
+- **Grants:** a Grants tab in Explore, "Grants for you" on Home, a Grants shortcut for Work & Career members,
+  saved grants, and `GrantCard`.
+- **Audience targeting:** members only see items meant for their group (`src/lib/audience.ts`, applied in
+  `AppContext` and Explore).
+- **Admin:** a new Grants section; a "Who is this for?" picker (`AudienceField` in `src/components/Forms.tsx`) on
+  resources, scholarships and grants; an Official link field on scholarships and grants; the audience shown on each
+  listing; and a Published grants tile.
+- **Item page:** `app/content/[kind]/[id].tsx` shows the full text, deadline, an Apply button, Save, Share and a
+  counsellor shortcut. Home, Explore and Saved cards open it.
+- **NIN:** a required field at registration (`app/register-biodata.tsx`) and on the profile, plus a "Complete your
+  profile" prompt on Home for members without one.
+- **Conversations:** auto-refresh every 15 s while open and when the app returns; pull to refresh.
+  The Support tab and counsellor inbox refresh when shown again.
+- **Notifications:** tapping a discussion or appointment notification opens the right screen (members).
+- **Wellbeing:** a support prompt after low or stressed check-ins.
+- **Booking:** 7 time slots.
+- **Help & FAQ** text updated.
 
-## Changes
+This overlay also contains the earlier sign-in and verification-link fix files (`app/_layout.tsx`,
+`app/+native-intent.ts`, `app/auth.tsx`, `app/verify.tsx`, `src/lib/routes.ts`, etc.). They are included so the
+overlay is complete against the project you uploaded. `app/_layout.tsx` gained one line (the new item page), and
+`src/lib/routes.ts` gained `openContent`.
 
-### New
-- `app/+native-intent.ts`: holds links that arrive while the app is running until the app is in the foreground
-  (plus 300 ms to settle), then opens them. Links that launch the app from closed are not delayed. This covers
-  verification, password-reset and counsellor-invite links.
-- `src/lib/routes.ts`: small helpers (`homeHrefFor`, `leaveScreen`, `isAdminRole`).
-
-### Modified
-- `app/_layout.tsx`: screens are guarded by session state with `Stack.Protected`. Signed-out screens (sign-in,
-  welcome, registration, forgot password) exist only when signed out. Each role's home exists only for that role.
-  Discussion and feature screens need a session. Email-link screens are always available. When the session
-  changes, the stack swaps to the right screens in one step:
-  - sign-in and session restore go straight to the role's home, with nothing underneath;
-  - sign-out goes to the sign-in screen.
-- `app/auth.tsx`: no longer navigates after sign-in. The Back link only shows when there is a screen to go back to.
-- `app/index.tsx`: the splash no longer redirects on its own. The design is unchanged.
-- `app/(admin)/index.tsx`, `app/(counsellor)/index.tsx`: removed the redirect effects that competed with
-  navigation. Sign-out no longer navigates manually.
-- `app/(student)/profile.tsx`: log-out no longer navigates manually.
-- `app/verify.tsx`: progress ("Confirming your email…") and the result are shown on the screen instead of pop-ups,
-  with a **Continue to sign in** button. Back works even when the app was opened straight from the link.
-- `app/reset-password.tsx`, `app/counsellor-invite.tsx`: Back and Continue work when the app was opened straight
-  from the link, and when someone is already signed in.
-- `src/components/WelcomeGate.tsx`: the first-time welcome sheet opens only after the person is on their dashboard
-  and the transition has finished, not over the sign-in screen mid-transition.
-
-### Behaviour notes
-- After signing in, the dashboard is the first screen. Android Back now leaves the app instead of returning to the
-  splash.
-- Accepting a counsellor invitation after signing in from the invitation screen now returns to the invitation,
-  so it can be accepted straight away.
-
-### Not changed
-API, `AppContext`, `app.json`, `package.json` (no new dependencies), the splash design, and all other screens.
-
-## Checks run
-- `npx tsc --noEmit`: passes, including with Expo Router's strict typed routes generated.
-- `npx expo config --type public`: passes.
-- `npx expo export --platform android` and `--platform ios`: both bundle. `+native-intent.ts` and `routes.ts` are
-  included.
-- Router simulation of sign-in, session restore and sign-out with Expo Router's own stack router: each lands on a
-  single correct screen.
-- Link handler with a mocked app state: links are held while in the background and opened about 300 ms after
-  returning to the foreground.
-- Not yet tested on a real Android or iOS device.
+## Not changed
+`app.json`, `package.json` (no new dependencies), `eas.json`, splash design, authentication flow.

@@ -1,6 +1,6 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useRef, useState } from "react";
 import { Alert, Pressable, Text, View } from "react-native";
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Screen, Card, Button, ButtonRow, Pill, Avatar, HeroCard, SectionHeader, StatTile, Segmented, PressableCard, EmptyState, LoadingBlock } from "@/src/components/UI";
 import { colors } from "@/src/lib/theme";
@@ -26,12 +26,18 @@ export default function CounsellorWorkspace() {
   // Only counsellors can reach this screen: the root layout guards it (app/_layout.tsx) and moves people to the
   // right place when they sign in or out, so this screen does not redirect on its own.
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (silent = false) => {
     try { const [me, inbox, sessions] = await Promise.all([apiCounsellorMe(), apiListDiscussions(), apiListAppointments()]); setProfile(me); setDiscussions(inbox); setAppointments(sessions); }
-    catch (error) { Alert.alert("Counsellor workspace unavailable", error instanceof Error ? error.message : "Please try again."); }
+    catch (error) { if (!silent) Alert.alert("Counsellor workspace unavailable", error instanceof Error ? error.message : "Please try again."); }
     finally { setLoading(false); }
   }, []);
-  useEffect(() => { if (app.user?.role === "counsellor") void refresh(); }, [refresh, app.user?.role]);
+  // Load on first visit, then quietly refresh whenever the workspace is shown again (new assignments, replies).
+  const loadedOnce = useRef(false);
+  useFocusEffect(useCallback(() => {
+    if (app.user?.role !== "counsellor") return;
+    void refresh(loadedOnce.current);
+    loadedOnce.current = true;
+  }, [refresh, app.user?.role]));
 
   const onRefresh = async () => { setRefreshing(true); try { await refresh(); } finally { setRefreshing(false); } };
 

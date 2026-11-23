@@ -3,7 +3,8 @@ import { Alert, Pressable, Text, View } from "react-native";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Screen, SectionHeader, Card, Pill, Avatar, HeroCard, IconBadge, Button } from "@/src/components/UI";
-import { FeaturedBanner, ResourceCard, ScholarshipCard } from "@/src/components/ContentCards";
+import { FeaturedBanner, GrantCard, ResourceCard, ScholarshipCard } from "@/src/components/ContentCards";
+import { openContent } from "@/src/lib/routes";
 import { colors, shadows } from "@/src/lib/theme";
 import { appointmentTone, formatDateTime, humanize } from "@/src/lib/format";
 import { useApp } from "@/src/context/AppContext";
@@ -14,7 +15,10 @@ export default function StudentHome() {
   const name = app.user?.name?.split(" ")[0] || "there";
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
-  const go = (slug: string) => slug === "counselling" ? router.push("/(student)/counselling") : slug === "scholarships" ? router.push({ pathname: "/(student)/explore", params: { tab: "scholarships" } }) : slug === "explore" ? router.push("/(student)/explore") : router.push({ pathname: "/feature/[slug]", params: { slug } });
+  const go = (slug: string) => slug === "counselling" ? router.push("/(student)/counselling")
+    : slug === "scholarships" || slug === "grants" || slug === "resources" ? router.push({ pathname: "/(student)/explore", params: { tab: slug } })
+    : slug === "explore" ? router.push("/(student)/explore")
+    : router.push({ pathname: "/feature/[slug]", params: { slug } });
   const categorySlug = app.user?.categorySlug || "";
   const isEducation = categorySlug === "education-learning";
   const isCareer = categorySlug === "work-career";
@@ -23,7 +27,7 @@ export default function StudentHome() {
   const focusLabel = app.user?.subcategoryName || app.user?.categoryName || "your next step";
   const quick = [
     ...(isEducation ? [{ title: "Learning resources", slug: "resources", icon: "book-outline" as const }, { title: "Scholarships", slug: "scholarships", icon: "school-outline" as const }] : []),
-    ...(isCareer ? [isBusinessFocused ? { title: "Business guidance", slug: "business", icon: "briefcase-outline" as const } : { title: "Career growth", slug: "career", icon: "trending-up-outline" as const }] : []),
+    ...(isCareer ? [isBusinessFocused ? { title: "Business guidance", slug: "business", icon: "briefcase-outline" as const } : { title: "Career growth", slug: "career", icon: "trending-up-outline" as const }, { title: "Grants", slug: "grants", icon: "cash-outline" as const }] : []),
     ...(!isEducation && !isCareer ? [{ title: "Explore opportunities", slug: "explore", icon: "compass-outline" as const }] : []),
     { title: "Speak to a counsellor", slug: "counselling", icon: "chatbubble-ellipses-outline" as const },
     { title: "Book appointment", slug: "booking", icon: "calendar-outline" as const },
@@ -31,6 +35,9 @@ export default function StudentHome() {
   const unread = app.unreadCount;
   const upcoming = app.bookings.filter(b => ["requested", "confirmed", "rescheduled"].includes(b.status) && new Date(b.startsAt).getTime() > Date.now());
   const doneGoals = app.goals.filter(g => g.done).length;
+  const lastCheckin = app.checkins[0];
+  const checkedInToday = !!lastCheckin && new Date(lastCheckin.createdAt).toDateString() === new Date().toDateString();
+  const missingNin = (app.user?.role === "member" || app.user?.role === "student") && !app.user?.nin;
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -57,9 +64,20 @@ export default function StudentHome() {
         </Pressable>
       </View>
 
+      {missingNin ? (
+        <Pressable accessibilityRole="button" accessibilityLabel="Complete your profile: add your NIN" onPress={() => router.push("/(student)/profile")} style={({ pressed }) => ({ flexDirection: "row", alignItems: "center", gap: 12, backgroundColor: colors.warningBg, borderRadius: 18, padding: 14, opacity: pressed ? 0.9 : 1 })}>
+          <Ionicons name="card-outline" size={22} color={colors.warning} />
+          <View style={{ flex: 1, gap: 2 }}>
+            <Text style={{ color: colors.ink, fontWeight: "800" }}>Complete your profile</Text>
+            <Text style={{ color: colors.muted, fontSize: 13, lineHeight: 18 }}>Your NIN is now required. Add it in your profile.</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color={colors.warning} />
+        </Pressable>
+      ) : null}
+
       <HeroCard eyebrow="A thought for today" icon="sparkles-outline" title="Small steps still move you forward." body="You don’t have to figure everything out at once. Start with one thing you can do today.">
         <Pressable accessibilityRole="button" onPress={() => go("wellness")} style={{ flexDirection: "row", alignItems: "center", gap: 8, alignSelf: "flex-start", minHeight: 44 }}>
-          <Text style={{ color: colors.mint, fontWeight: "800", fontSize: 14 }}>Check in with yourself</Text>
+          <Text style={{ color: colors.mint, fontWeight: "800", fontSize: 14 }}>{checkedInToday ? `Checked in today: ${lastCheckin.mood} · See your week` : "Check in with yourself"}</Text>
           <Ionicons name="arrow-forward" size={16} color={colors.mint} />
         </Pressable>
       </HeroCard>
@@ -128,14 +146,18 @@ export default function StudentHome() {
         const featured = shown.find(r => r.imageUrl) ?? shown[0] ?? null;
         const rest = shown.filter(r => r.id !== featured?.id).slice(0, 2);
         return <>
-          {featured ? <FeaturedBanner eyebrow={featured.category} title={featured.title} subtitle={featured.readTime} imageUrl={featured.imageUrl} onPress={() => go("resources")} /> : null}
-          {(featured ? rest : shown.slice(0, 2)).map(r => <ResourceCard key={r.id} item={r} onPress={() => go("resources")} />)}
+          {featured ? <FeaturedBanner eyebrow={featured.category} title={featured.title} subtitle={featured.readTime} imageUrl={featured.imageUrl} onPress={() => openContent("resource", featured.id)} /> : null}
+          {(featured ? rest : shown.slice(0, 2)).map(r => <ResourceCard key={r.id} item={r} onPress={() => openContent("resource", r.id)} />)}
           {!shown.length ? <Card><Text style={{ color: colors.muted, lineHeight: 21 }}>New resources will appear here when administrators publish them.</Text></Card> : null}
         </>;
       })()}
-      {isEducation && app.scholarships.length > 0 && <>
-        <SectionHeader title="Scholarships closing soon" actionLabel="See all" onAction={() => go("scholarships")} />
-        {[...app.scholarships].sort((a, b) => new Date(a.deadline).getTime() - new Date(b.deadline).getTime()).slice(0, 2).map(sch => <ScholarshipCard key={sch.id} item={sch} onPress={() => go("scholarships")} />)}
+      {app.scholarships.length > 0 && <>
+        <SectionHeader title="Scholarships closing soon" subtitle="Published for your group." actionLabel="See all" onAction={() => go("scholarships")} />
+        {[...app.scholarships].sort((a, b) => new Date(a.deadline).getTime() - new Date(b.deadline).getTime()).slice(0, 2).map(sch => <ScholarshipCard key={sch.id} item={sch} onPress={() => openContent("scholarship", sch.id)} />)}
+      </>}
+      {app.grants.length > 0 && <>
+        <SectionHeader title="Grants for you" subtitle={`Selected for ${focusLabel.toLowerCase()}.`} actionLabel="See all" onAction={() => go("grants")} />
+        {app.grants.slice(0, 2).map(grant => <GrantCard key={grant.id} item={grant} onPress={() => openContent("grant", grant.id)} />)}
       </>}
       {upcoming.length > 0 && <>
         <SectionHeader title="Upcoming appointments" actionLabel="View all" onAction={() => go("booking")} />

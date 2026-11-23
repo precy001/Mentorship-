@@ -56,6 +56,7 @@ function RootNavigator() {
       <Stack.Protected guard={signedIn}>
         <Stack.Screen name="discussion/[id]" options={{ presentation: "card" }} />
         <Stack.Screen name="feature/[slug]" options={{ headerShown: false }} />
+        <Stack.Screen name="content/[kind]/[id]" options={{ presentation: "card" }} />
       </Stack.Protected>
 
       {/* Email links: open whether or not someone is signed in */}

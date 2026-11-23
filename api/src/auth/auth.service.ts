@@ -26,17 +26,18 @@ const REFRESH_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const REFRESH_REUSE_GRACE_MS = 30 * 1000;
 const ACCESS_TOKEN_SECONDS = 900;
 
-type StoredProfileData = { lga?: unknown; lcda?: unknown; school?: unknown };
+type StoredProfileData = { lga?: unknown; lcda?: unknown; school?: unknown; nin?: unknown };
 
-function getStoredProfileData(value: unknown): { lga: string | null; lcda: string | null; school: string | null } {
+function getStoredProfileData(value: unknown): { lga: string | null; lcda: string | null; school: string | null; nin: string | null } {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    return { lga: null, lcda: null, school: null };
+    return { lga: null, lcda: null, school: null, nin: null };
   }
   const data = value as StoredProfileData;
   return {
     lga: typeof data.lga === 'string' ? data.lga : null,
     lcda: typeof data.lcda === 'string' ? data.lcda : null,
     school: typeof data.school === 'string' ? data.school : null,
+    nin: typeof data.nin === 'string' ? data.nin : null,
   };
 }
 
@@ -78,7 +79,7 @@ export class AuthService {
           phoneNumber: dto.phoneNumber?.trim(),
           dateOfBirth: dto.dateOfBirth ? new Date(dto.dateOfBirth) : undefined,
           stateOfResidence: area.state,
-          profileData: { lga: area.lga, lcda: area.lcda, school: dto.school?.trim() || null },
+          profileData: { lga: area.lga, lcda: area.lcda, school: dto.school?.trim() || null, nin: dto.nin },
         } },
       },
       select: { id: true, email: true },

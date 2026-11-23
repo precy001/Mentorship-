@@ -5,7 +5,7 @@ import { CurrentUser, type AuthenticatedUser } from '../auth/decorators/current-
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { AdminService } from './admin.service';
-import { AcceptCounsellorInvitationDto, AccountStatusDto, CounsellorAvailabilityDto, CounsellorInvitationDto, ResourceDto, ScholarshipDto, TopicActiveDto, TopicAssignmentDto, TopicDto, UserRoleDto } from './admin.dto';
+import { AcceptCounsellorInvitationDto, AccountStatusDto, CounsellorAvailabilityDto, CounsellorInvitationDto, ResourceDto, ScholarshipDto, GrantDto, TopicActiveDto, TopicAssignmentDto, TopicDto, UserRoleDto } from './admin.dto';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { LgaActiveDto, RenameLgaDto, ServiceAreaActiveDto, ServiceAreaDto } from '../service-areas/service-areas.dto';
 import { MAX_IMAGE_BYTES } from '../storage/image-validation';
@@ -49,6 +49,11 @@ export class AdminController {
   @Put('scholarships/:id') updateScholarship(@CurrentUser() actor: AuthenticatedUser, @Param('id') id: string, @Body() dto: ScholarshipDto) { return this.admin.updateScholarship(actor.id, id, dto); }
   @Delete('scholarships/:id') deleteScholarship(@CurrentUser() actor: AuthenticatedUser, @Param('id') id: string) { return this.admin.deleteScholarship(actor.id, id); }
   @Patch('scholarships/:id/active') scholarshipActive(@CurrentUser() actor: AuthenticatedUser, @Param('id') id: string, @Body() body: TopicActiveDto) { return this.admin.setScholarshipActive(actor.id, id, body.isActive); }
+  @Get('grants') grants() { return this.admin.listGrants(); }
+  @Post('grants') createGrant(@CurrentUser() actor: AuthenticatedUser, @Body() dto: GrantDto) { return this.admin.createGrant(actor.id, dto); }
+  @Put('grants/:id') updateGrant(@CurrentUser() actor: AuthenticatedUser, @Param('id') id: string, @Body() dto: GrantDto) { return this.admin.updateGrant(actor.id, id, dto); }
+  @Delete('grants/:id') deleteGrant(@CurrentUser() actor: AuthenticatedUser, @Param('id') id: string) { return this.admin.deleteGrant(actor.id, id); }
+  @Patch('grants/:id/active') grantActive(@CurrentUser() actor: AuthenticatedUser, @Param('id') id: string, @Body() body: TopicActiveDto) { return this.admin.setGrantActive(actor.id, id, body.isActive); }
   @Get('appointments') appointments() { return this.admin.listAppointments(); }
   @Get('audit-logs') auditLogs() { return this.admin.listAuditLogs(); }
   @Get('discussions/unassigned') unassignedDiscussions() { return this.admin.listUnassignedDiscussions(); }

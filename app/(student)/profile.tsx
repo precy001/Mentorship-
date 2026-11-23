@@ -6,7 +6,7 @@ import { router } from "expo-router";
 import { Screen, Heading, Card, Button, Avatar, Pill, Divider, InfoRow, Chip, SectionHeader, StatTile, ListGroup, ListRow } from "@/src/components/UI";
 import { useApp } from "@/src/context/AppContext";
 import { colors } from "@/src/lib/theme";
-import { apiGetMembershipCategories, apiUpdateMembership, apiUpdateProfile, apiUploadProfilePicture, apiListActivities, MembershipCategory } from "@/src/lib/api";
+import { apiGetMembershipCategories, apiUpdateMembership, apiUpdateProfile, apiUploadProfilePicture, MembershipCategory } from "@/src/lib/api";
 import { DatePickerField } from "@/src/components/Forms";
 import { Field } from "@/src/components/UI";
 import { normalizePhone, toDateString, validateDateString, validateLength, validatePhone } from "@/src/lib/validation";
@@ -18,8 +18,7 @@ export default function Profile() {
   const [categoryId, setCategoryId] = useState(app.user?.categoryId || "");
   const [subcategoryId, setSubcategoryId] = useState(app.user?.subcategoryId || "");
   const [savingMembership, setSavingMembership] = useState(false);
-  const [moodCount, setMoodCount] = useState(0);
-  useEffect(() => { apiGetMembershipCategories().then(setCategories).catch(error => Alert.alert("Membership options unavailable", error instanceof Error ? error.message : "Please try again.")); apiListActivities("WELLBEING_CHECKIN").then(items => setMoodCount(items.length)).catch(() => {}); }, []);
+  useEffect(() => { apiGetMembershipCategories().then(setCategories).catch(error => Alert.alert("Membership options unavailable", error instanceof Error ? error.message : "Please try again.")); }, []);
   const selectedCategory = categories.find(item => item.id === categoryId);
   const selectedSubcategory = selectedCategory?.subcategories.find(item => item.id === subcategoryId);
   const unchanged = categoryId === (app.user?.categoryId || "") && subcategoryId === (app.user?.subcategoryId || "");
@@ -33,13 +32,14 @@ export default function Profile() {
   const [phone, setPhone] = useState(app.user?.phoneNumber || "");
   const [dob, setDob] = useState(app.user?.dateOfBirth || "");
   const [school, setSchool] = useState(app.user?.school || "");
+  const [nin, setNin] = useState(app.user?.nin || "");
   const [savingDetails, setSavingDetails] = useState(false);
   const [showDetailErrors, setShowDetailErrors] = useState(false);
   const saved = app.user;
   // Show the stored values again after a save or when the account is reloaded.
   useEffect(() => {
-    setName(saved?.name || ""); setPhone(saved?.phoneNumber || ""); setDob(saved?.dateOfBirth || ""); setSchool(saved?.school || "");
-  }, [saved?.id, saved?.name, saved?.phoneNumber, saved?.dateOfBirth, saved?.school]);
+    setName(saved?.name || ""); setPhone(saved?.phoneNumber || ""); setDob(saved?.dateOfBirth || ""); setSchool(saved?.school || ""); setNin(saved?.nin || "");
+  }, [saved?.id, saved?.name, saved?.phoneNumber, saved?.dateOfBirth, saved?.school, saved?.nin]);
   const today = new Date();
   const youngest = toDateString(new Date(today.getFullYear() - 13, today.getMonth(), today.getDate()));
   const oldest = toDateString(new Date(today.getFullYear() - 120, today.getMonth(), today.getDate()));
@@ -48,16 +48,20 @@ export default function Profile() {
     phone: validatePhone(phone, { required: false }),
     dob: dob ? validateDateString(dob, "Date of birth", { min: oldest, max: youngest }) : null,
     school: validateLength(school, "School or organisation", { max: 180, required: false }),
+    // Required, with no verification step: exactly 11 digits.
+    nin: /^\d{11}$/.test(nin) ? null : nin ? "Your NIN must be exactly 11 digits." : "Your NIN is required.",
   };
-  const detailsChanged = name.trim() !== (saved?.name || "") || normalizePhone(phone) !== normalizePhone(saved?.phoneNumber || "") || dob !== (saved?.dateOfBirth || "") || school.trim() !== (saved?.school || "");
+  const ninMissing = !saved?.nin;
+  const detailsChanged = name.trim() !== (saved?.name || "") || normalizePhone(phone) !== normalizePhone(saved?.phoneNumber || "") || dob !== (saved?.dateOfBirth || "") || school.trim() !== (saved?.school || "") || nin !== (saved?.nin || "");
   const saveDetails = async () => {
     setShowDetailErrors(true);
     if (Object.values(detailErrors).some(Boolean)) return;
-    const changes: { displayName?: string; phoneNumber?: string; dateOfBirth?: string; school?: string } = {};
+    const changes: { displayName?: string; phoneNumber?: string; dateOfBirth?: string; school?: string; nin?: string } = {};
     if (name.trim() !== (saved?.name || "")) changes.displayName = name.trim();
     if (normalizePhone(phone) !== normalizePhone(saved?.phoneNumber || "")) changes.phoneNumber = normalizePhone(phone);
     if (dob && dob !== (saved?.dateOfBirth || "")) changes.dateOfBirth = dob;
     if (school.trim() !== (saved?.school || "")) changes.school = school.trim();
+    if (nin !== (saved?.nin || "")) changes.nin = nin;
     if (!Object.keys(changes).length) return;
     try {
       setSavingDetails(true);
@@ -105,7 +109,9 @@ export default function Profile() {
     { label: "Saved resources", value: app.savedResources.length, icon: "book-outline" as const },
     { label: "Saved scholarships", value: app.savedScholarships.length, icon: "school-outline" as const },
     { label: "Appointments", value: app.bookings.filter(b => b.status !== "cancelled").length, icon: "calendar-outline" as const },
-    { label: "Mood check-ins", value: moodCount, icon: "heart-outline" as const },
+    { label: "Saved grants", value: app.savedGrants.length, icon: "cash-outline" as const },
+    // From shared app state, so a check-in saved anywhere shows here straight away.
+    { label: "Mood check-ins", value: app.checkins.length, icon: "heart-outline" as const },
   ];
 
   return (
@@ -131,9 +137,11 @@ export default function Profile() {
 
       <Card>
         <Heading title="Personal details" small subtitle="Keep your details up to date. Your email address cannot be changed here." />
+        {ninMissing ? <View accessibilityRole="alert" style={{ flexDirection: "row", gap: 10, backgroundColor: colors.warningBg, padding: 12, borderRadius: 14 }}><Ionicons name="card-outline" size={18} color={colors.warning} /><Text style={{ color: colors.warning, flex: 1, fontSize: 13, fontWeight: "600", lineHeight: 18 }}>Add your NIN below and tap Save details to complete your profile.</Text></View> : null}
         <Field label="Full name" value={name} onChangeText={setName} required maxLength={160} autoCapitalize="words" textContentType="name" editable={!savingDetails} error={showDetailErrors ? detailErrors.name : null} />
         <Field label="Phone number" optional value={phone} onChangeText={setPhone} keyboardType="phone-pad" maxLength={24} textContentType="telephoneNumber" placeholder="+2348012345678" editable={!savingDetails} error={showDetailErrors ? detailErrors.phone : null} />
         <DatePickerField label="Date of birth" optional value={dob} onChange={setDob} minDate={oldest} maxDate={youngest} defaultView={`${today.getFullYear() - 20}-01-01`} error={showDetailErrors ? detailErrors.dob : null} />
+        <Field label="National Identification Number (NIN)" value={nin} onChangeText={v => setNin(v.replace(/\D/g, "").slice(0, 11))} required keyboardType="number-pad" maxLength={11} placeholder="11-digit NIN" helper="Private to your account. It is not shown to other members." editable={!savingDetails} error={showDetailErrors || (ninMissing && !nin) ? detailErrors.nin : null} />
         <Field label="School or organisation" optional value={school} onChangeText={setSchool} maxLength={180} editable={!savingDetails} error={showDetailErrors ? detailErrors.school : null} />
         <Divider />
         <InfoRow icon="location-outline" label="LGA" value={app.user?.lga || "Not provided"} />
@@ -169,7 +177,7 @@ export default function Profile() {
       </View>
 
       <ListGroup>
-        <ListRow icon="heart-outline" title="Saved items" subtitle="Resources and scholarships you’ve saved" onPress={() => router.push({ pathname: "/feature/[slug]", params: { slug: "saved" } })} />
+        <ListRow icon="heart-outline" title="Saved items" subtitle="Resources, scholarships and grants you’ve saved" onPress={() => router.push({ pathname: "/feature/[slug]", params: { slug: "saved" } })} />
         <ListRow icon="help-circle-outline" title="Help & frequently asked questions" last onPress={() => router.push({ pathname: "/feature/[slug]", params: { slug: "help" } })} />
       </ListGroup>
 

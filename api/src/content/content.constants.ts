@@ -27,3 +27,18 @@ export const MAX_READ_MINUTES = 180;
 /** "5 min read" … "180 min read". */
 export const READ_TIME_PATTERN = /^(?:[1-9]|[1-9]\d|1[0-7]\d|180) min read$/;
 export const CONTENT_IMAGE_FOLDER = 'content';
+
+/**
+ * Who a piece of content is for. Values are membership category / subcategory slugs.
+ * Both lists empty = everyone. Defaults follow the product structure:
+ * resources for everyone, scholarships for students, grants for working members.
+ */
+export type Audience = { audienceCategories: string[]; audienceSubcategories: string[] };
+export const EVERYONE: Audience = { audienceCategories: [], audienceSubcategories: [] };
+export const DEFAULT_AUDIENCE = {
+  resource: EVERYONE,
+  scholarship: { audienceCategories: ['education-learning'], audienceSubcategories: [] } as Audience,
+  grant: { audienceCategories: ['work-career'], audienceSubcategories: [] } as Audience,
+};
+/** Upper bound on how many groups one item can target (there are far fewer groups than this). */
+export const MAX_AUDIENCE_GROUPS = 50;

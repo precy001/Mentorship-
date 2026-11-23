@@ -6,7 +6,9 @@ import { Screen, Heading, Card, Button, Field, Pill, BackLink, SectionHeader, Op
 import type { IconName } from "@/src/components/UI";
 import { DatePickerField } from "@/src/components/Forms";
 import { RescheduleForm } from "@/src/components/RescheduleForm";
-import { ResourceCard, ScholarshipCard } from "@/src/components/ContentCards";
+import { GrantCard, ResourceCard, ScholarshipCard } from "@/src/components/ContentCards";
+import { moodInsights } from "@/src/lib/mood";
+import { openContent } from "@/src/lib/routes";
 import { toDateString } from "@/src/lib/validation";
 import { appointmentTone, formatDateTime, formatShortDate, formatTimeRange, humanize } from "@/src/lib/format";
 import { useApp } from "@/src/context/AppContext";
@@ -20,7 +22,10 @@ const MOODS: { value: string; icon: IconName }[] = [
   { value: "Low", icon: "sad-outline" },
   { value: "Stressed", icon: "thunderstorm-outline" },
 ];
-const TIME_SLOTS = [{ label: "10:00 AM", value: "10:00" }, { label: "1:00 PM", value: "13:00" }, { label: "3:30 PM", value: "15:30" }];
+const TIME_SLOTS = [
+  { label: "9:00 AM", value: "09:00" }, { label: "10:00 AM", value: "10:00" }, { label: "11:30 AM", value: "11:30" },
+  { label: "1:00 PM", value: "13:00" }, { label: "2:30 PM", value: "14:30" }, { label: "3:30 PM", value: "15:30" }, { label: "5:00 PM", value: "17:00" },
+];
 const QUESTIONS: { question: string; options: string[] }[] = [
   { question: "Which activity sounds most interesting?", options: ["Building or fixing things", "Helping people", "Analysing information"] },
   { question: "Which strength sounds most like you?", options: ["Practical problem-solving", "Listening and explaining", "Logic and patterns"] },
@@ -63,7 +68,9 @@ export default function FeatureScreen() {
       setRecords(await apiListActivities());
     } catch (error) { Alert.alert("Activity data unavailable", error instanceof Error ? error.message : "Please try again."); }
   };
-  useEffect(() => { if (["assessment", "wellness", "goals", "history"].includes(slug)) void refreshActivities(); }, [slug]);
+  useEffect(() => { if (["assessment", "goals", "history"].includes(slug)) void refreshActivities(); }, [slug]);
+  // Make sure the latest check-ins are shown even if the app has been open for a while.
+  useEffect(() => { if (slug === "wellness") void app.refreshAccountData(); }, [slug]);
   useEffect(() => {
     if (slug !== "history") return;
     Promise.all([apiListAppointments(), apiMyRatings()]).then(([items, ratings]) => { setAppointments(items); setMyRatings(ratings); }).catch(error => Alert.alert("Appointment history unavailable", error instanceof Error ? error.message : "Please try again."));
@@ -77,6 +84,13 @@ export default function FeatureScreen() {
   }, [slug]);
   const titleMap: Record<string, string> = { ai: "Automated support", booking: "Appointments", assessment: "Career assessment", wellness: "Wellbeing check-in", goals: "Personal goals", notifications: "Notifications", history: "Activity history", discussion: "Private discussion", saved: "Saved items", resources: "Resources library", career: "Career growth", business: "Business guidance", universities: "Universities", help: "Help & support" };
   const title = titleMap[slug] || "Mentorship+";
+  const isMember = app.user?.role === "member" || app.user?.role === "student";
+  const notificationTarget = (type: string): { label: string; open: () => void } | null => {
+    if (!isMember) return null;
+    if (type === "DISCUSSION") return { label: "Open discussions", open: () => router.push("/(student)/counselling") };
+    if (type === "APPOINTMENT") return { label: "Open appointments", open: () => router.push({ pathname: "/feature/[slug]", params: { slug: "booking" } }) };
+    return null;
+  };
 
   const requestAppointment = async () => {
     const [year, month, day] = date.split("-").map(Number);
@@ -110,13 +124,17 @@ export default function FeatureScreen() {
     try { setSaving(true); await apiCreateActivity("CAREER_ASSESSMENT", { answers, result }); await refreshActivities(); Alert.alert("Assessment saved", `Your responses suggest exploring ${result}. This is a reflection tool, not a validated assessment.`); } catch (error) { Alert.alert("Could not save assessment", error instanceof Error ? error.message : "Please try again."); } finally { setSaving(false); }
   };
 
-  const saveCheckin = async () => { try { setSaving(true); await apiCreateActivity("WELLBEING_CHECKIN", { mood, note }); setNote(""); await refreshActivities(); Alert.alert("Check-in saved", "Your private entry is saved to your account and is not included in general admin analytics."); } catch (error) { Alert.alert("Could not save check-in", error instanceof Error ? error.message : "Please try again."); } finally { setSaving(false); } };
+  // Saved through the shared app state, so the insights here, the profile count and the home screen all update at once.
+  const [lastSavedMood, setLastSavedMood] = useState<string | null>(null);
+  const saveCheckin = async () => { try { setSaving(true); await app.addCheckin(mood, note.trim()); setLastSavedMood(mood); setNote(""); } catch (error) { Alert.alert("Could not save check-in", error instanceof Error ? error.message : "Please try again."); } finally { setSaving(false); } };
 
   const addGoal = async () => { if (!goal.trim()) return Alert.alert("Add a goal", "Enter a short goal first."); try { setSaving(true); await app.addGoal(goal.trim()); setGoal(""); await refreshActivities(); } catch (error) { Alert.alert("Could not save goal", error instanceof Error ? error.message : "Please try again."); } finally { setSaving(false); } };
 
   const contentList = app.resources.filter(resource => slug === "resources" || resource.category.toLowerCase().includes(slug));
   const goals = records.filter(record => record.type === "PERSONAL_GOAL");
-  const checkins = records.filter(record => record.type === "WELLBEING_CHECKIN");
+  const checkins = app.checkins;
+  const insights = moodInsights(checkins);
+  const moodIcon = (value: string | null): IconName => MOODS.find(m => m.value === value)?.icon ?? "ellipse-outline";
   const hasAssessment = records.some(record => record.type === "CAREER_ASSESSMENT");
 
   return <Screen>
@@ -175,15 +193,50 @@ export default function FeatureScreen() {
       <Card style={{ gap: 14 }}>
         <Heading title="How are you feeling today?" small subtitle="There is no right or wrong answer." />
         <View accessibilityRole="radiogroup" style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>{MOODS.map(m => <Chip key={m.value} label={m.value} icon={m.icon} accessibilityRole="radio" selected={mood === m.value} onPress={() => setMood(m.value)} />)}</View>
-        <Field label="Private journal note" optional value={note} onChangeText={setNote} placeholder="Anything you want to reflect on…" multiline editable={!saving} />
+        <Field label="Private journal note" optional value={note} onChangeText={setNote} placeholder="Anything you want to reflect on…" multiline maxLength={2000} editable={!saving} />
         <Button title={saving ? "Saving…" : "Save check-in"} loading={saving} onPress={() => void saveCheckin()} />
+        {lastSavedMood ? <View accessibilityLiveRegion="polite" style={{ flexDirection: "row", alignItems: "center", gap: 8 }}><Ionicons name="checkmark-circle" size={18} color={colors.success} /><Text style={{ color: colors.success, fontWeight: "700", fontSize: 13, flex: 1 }}>Saved. Your insights below are updated.</Text></View> : null}
+        <Text style={{ color: colors.muted, fontSize: 12, lineHeight: 17 }}>Check-ins are private to your account and are not included in admin analytics.</Text>
       </Card>
+
+      {insights.needsSupport || lastSavedMood === "Low" || lastSavedMood === "Stressed" ? <Card style={{ gap: 10, backgroundColor: colors.brandSurface, borderColor: colors.brandBorder }}>
+        <View style={{ flexDirection: "row", gap: 10, alignItems: "flex-start" }}>
+          <Ionicons name="heart-circle-outline" size={24} color={colors.primary} />
+          <Text style={{ color: colors.ink, flex: 1, lineHeight: 21 }}>Thank you for being honest about how you feel. You don’t have to carry it alone — a counsellor can talk it through with you, privately.</Text>
+        </View>
+        <Button title="Talk to a counsellor" icon="chatbubble-ellipses-outline" size="sm" onPress={() => router.push("/(student)/counselling")} />
+        <Text style={{ color: colors.muted, fontSize: 12, lineHeight: 17 }}>If you or someone else may be in immediate danger, contact your local emergency number straight away.</Text>
+      </Card> : null}
+
+      {checkins.length ? <>
+        <SectionHeader title="Your week" subtitle="Worked out from your own check-ins." />
+        <Card style={{ gap: 16 }}>
+          <View accessibilityLabel={`Last 7 days: ${insights.week.map(day => `${day.isToday ? "today" : day.label} ${day.mood ?? "no check-in"}`).join(", ")}`} accessible style={{ flexDirection: "row", justifyContent: "space-between" }}>
+            {insights.week.map(day => <View key={day.key} style={{ alignItems: "center", gap: 6, flex: 1 }}>
+              <View style={{ width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center", backgroundColor: day.mood ? colors.accentTint : colors.surfaceSecondary, borderWidth: day.isToday ? 1.5 : 0, borderColor: colors.primary }}>
+                {day.mood ? <Ionicons name={moodIcon(day.mood)} size={18} color={colors.primary} /> : <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: colors.mutedLight }} />}
+              </View>
+              <Text style={{ color: day.isToday ? colors.primary : colors.muted, fontSize: 11, fontWeight: day.isToday ? "800" : "600" }}>{day.isToday ? "Today" : day.label}</Text>
+            </View>)}
+          </View>
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+            <View style={{ flexBasis: "30%", flexGrow: 1, backgroundColor: colors.surfaceSecondary, borderRadius: 14, padding: 12, gap: 2 }}><Text style={{ color: colors.ink, fontSize: 20, fontWeight: "800" }}>{insights.checkinsThisWeek}</Text><Text style={{ color: colors.muted, fontSize: 12 }}>this week</Text></View>
+            <View style={{ flexBasis: "30%", flexGrow: 1, backgroundColor: colors.surfaceSecondary, borderRadius: 14, padding: 12, gap: 2 }}><Text style={{ color: colors.ink, fontSize: 20, fontWeight: "800" }}>{insights.streak}</Text><Text style={{ color: colors.muted, fontSize: 12 }}>{insights.streak === 1 ? "day streak" : "days in a row"}</Text></View>
+            <View style={{ flexBasis: "30%", flexGrow: 1, backgroundColor: colors.surfaceSecondary, borderRadius: 14, padding: 12, gap: 2 }}><Text numberOfLines={1} style={{ color: colors.ink, fontSize: 20, fontWeight: "800" }}>{insights.commonMood ?? "—"}</Text><Text style={{ color: colors.muted, fontSize: 12 }}>most often (30 days)</Text></View>
+          </View>
+          {insights.trend ? <Text style={{ color: colors.muted, lineHeight: 20 }}>{insights.trend === "brighter" ? "This week looks brighter than last week. Keep doing what’s helping." : insights.trend === "lower" ? "This week has felt heavier than last week. Small steps and a chat with someone you trust can help." : "Your mood has been fairly steady compared with last week."}</Text> : null}
+        </Card>
+      </> : null}
+
       <SectionHeader title="Recent check-ins" />
-      {checkins.map(record => <Card key={record.id}>
-        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}><Text style={{ color: colors.ink, fontWeight: "800" }}>{String(record.payload.mood || "Check-in")}</Text><Text style={{ color: colors.muted, fontSize: 12 }}>{formatShortDate(record.createdAt)}</Text></View>
-        {typeof record.payload.note === "string" && record.payload.note ? <Text style={{ color: colors.muted, lineHeight: 20 }}>{record.payload.note}</Text> : null}
+      {checkins.slice(0, 10).map(record => <Card key={record.id}>
+        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flex: 1 }}><Ionicons name={moodIcon(record.mood)} size={18} color={colors.primary} /><Text style={{ color: colors.ink, fontWeight: "800" }}>{record.mood}</Text></View>
+          <Text style={{ color: colors.muted, fontSize: 12 }}>{formatDateTime(record.createdAt)}</Text>
+        </View>
+        {record.note ? <Text style={{ color: colors.muted, lineHeight: 20 }}>{record.note}</Text> : null}
       </Card>)}
-      {!checkins.length ? <EmptyState icon="heart-outline" title="No check-ins yet" message="Your private check-ins will appear here." /> : null}
+      {!checkins.length ? <EmptyState icon="heart-outline" title="No check-ins yet" message="Save your first check-in above and your weekly insights will appear here." /> : null}
     </>}
 
     {slug === "goals" && <>
@@ -206,13 +259,20 @@ export default function FeatureScreen() {
         <Text accessibilityLiveRegion="polite" style={{ color: colors.muted, fontSize: 13, flex: 1 }}>{app.unreadCount ? `${app.unreadCount} unread` : "Everything is read"}</Text>
         {app.unreadCount > 0 ? <Button title="Mark all as read" icon="checkmark-done-outline" variant="secondary" size="sm" onPress={async () => { try { await app.markAllRead(); setRemoteNotifications(current => current.map(item => item.readAt ? item : { ...item, readAt: new Date().toISOString() })); } catch (error) { Alert.alert("Could not update", error instanceof Error ? error.message : "Please try again."); } }} /> : null}
       </View>
-      {remoteNotifications.map(n => <Pressable key={n.id} accessibilityRole="button" accessibilityLabel={`${n.title}. ${n.body}. ${n.readAt ? "Read" : "Unread, tap to mark as read"}`} onPress={async () => { if (n.readAt) return; try { await app.markRead(n.id); setRemoteNotifications(current => current.map(item => item.id === n.id ? { ...item, readAt: new Date().toISOString() } : item)); } catch (error) { Alert.alert("Notification not updated", error instanceof Error ? error.message : "Please try again."); } }}>
+      {remoteNotifications.map(n => { const target = notificationTarget(n.type); return <Pressable key={n.id} accessibilityRole="button" accessibilityLabel={`${n.title}. ${n.body}. ${n.readAt ? "Read" : "Unread"}`} accessibilityHint={target ? `Opens ${target.label}` : n.readAt ? undefined : "Marks it as read"} onPress={async () => {
+        if (!n.readAt) { try { await app.markRead(n.id); setRemoteNotifications(current => current.map(item => item.id === n.id ? { ...item, readAt: new Date().toISOString() } : item)); } catch (error) { Alert.alert("Notification not updated", error instanceof Error ? error.message : "Please try again."); return; } }
+        // Tapping a notification takes members to what it is about.
+        target?.open();
+      }}>
         <Card style={{ borderColor: n.readAt ? colors.cardBorder : colors.primary, borderWidth: n.readAt ? 1 : 1.5, backgroundColor: n.readAt ? colors.surface : colors.brandSurface }}>
           <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 10 }}><Text style={{ color: colors.ink, fontWeight: "800", flex: 1, fontSize: 15 }}>{n.title}</Text>{!n.readAt && <Pill label="New" tone="green" />}</View>
           <Text style={{ color: colors.muted, lineHeight: 20 }}>{n.body}</Text>
-          <Text style={{ color: colors.mutedLight, fontSize: 12 }}>{formatDateTime(n.createdAt)}</Text>
+          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+            <Text style={{ color: colors.mutedLight, fontSize: 12 }}>{formatDateTime(n.createdAt)}</Text>
+            {target ? <View style={{ flexDirection: "row", alignItems: "center", gap: 2 }}><Text style={{ color: colors.primary, fontSize: 12, fontWeight: "800" }}>{target.label}</Text><Ionicons name="chevron-forward" size={14} color={colors.primary} /></View> : null}
+          </View>
         </Card>
-      </Pressable>)}
+      </Pressable>; })}
       {noticesMore ? <Button title={noticesLoading ? "Loading…" : "Load earlier notifications"} variant="secondary" loading={noticesLoading} onPress={() => void loadNotices(true)} /> : null}
       {!remoteNotifications.length && !noticesLoading && <EmptyState icon="notifications-outline" title="You’re all caught up" message="You have no notifications yet." />}
     </>}
@@ -240,14 +300,16 @@ export default function FeatureScreen() {
 
     {slug === "saved" && <>
       <SectionHeader title="Saved resources" />
-      {app.resources.filter(r => app.savedResources.includes(r.id)).map(r => <ResourceCard key={r.id} item={r} saved onToggleSave={() => app.toggleResource(r.id)} />)}
+      {app.resources.filter(r => app.savedResources.includes(r.id)).map(r => <ResourceCard key={r.id} item={r} saved onToggleSave={() => app.toggleResource(r.id)} onPress={() => openContent("resource", r.id)} />)}
       <SectionHeader title="Saved scholarships" />
-      {app.scholarships.filter(sch => app.savedScholarships.includes(sch.id)).map(sch => <ScholarshipCard key={sch.id} item={sch} saved onToggleSave={() => app.toggleScholarship(sch.id)} />)}
-      {!app.savedResources.length && !app.savedScholarships.length && <EmptyState icon="heart-outline" title="Nothing saved yet" message="Open Explore and tap the heart on an item to save it." actionLabel="Go to Explore" onAction={() => router.push("/(student)/explore")} />}
+      {app.scholarships.filter(sch => app.savedScholarships.includes(sch.id)).map(sch => <ScholarshipCard key={sch.id} item={sch} saved onToggleSave={() => app.toggleScholarship(sch.id)} onPress={() => openContent("scholarship", sch.id)} />)}
+      {app.grants.some(g => app.savedGrants.includes(g.id)) ? <SectionHeader title="Saved grants" /> : null}
+      {app.grants.filter(g => app.savedGrants.includes(g.id)).map(g => <GrantCard key={g.id} item={g} saved onToggleSave={() => app.toggleGrant(g.id)} onPress={() => openContent("grant", g.id)} />)}
+      {!app.savedResources.length && !app.savedScholarships.length && !app.savedGrants.length && <EmptyState icon="heart-outline" title="Nothing saved yet" message="Open Explore and tap the heart on an item to save it." actionLabel="Go to Explore" onAction={() => router.push("/(student)/explore")} />}
     </>}
 
     {(slug === "resources" || slug === "career" || slug === "business") && <>
-      {contentList.map(r => <ResourceCard key={r.id} item={r} saved={app.savedResources.includes(r.id)} onToggleSave={() => app.toggleResource(r.id)} />)}
+      {contentList.map(r => <ResourceCard key={r.id} item={r} saved={app.savedResources.includes(r.id)} onToggleSave={() => app.toggleResource(r.id)} onPress={() => openContent("resource", r.id)} />)}
       {!contentList.length && <EmptyState icon="book-outline" title="Nothing published here yet" message="Check back after administrators publish relevant content." />}
     </>}
 
@@ -255,7 +317,8 @@ export default function FeatureScreen() {
 
     {slug === "help" && <>
       {[
-        ["Is NIN verification available?", "No. NIN verification is not connected to an authorised verification provider, and the app does not claim that your NIN has been verified."],
+        ["Why do you ask for my NIN?", "Your National Identification Number is a required part of your profile. It is stored privately with your account. It is not yet checked against NIMC records, and the app does not claim that it has been verified."],
+        ["Why can’t I see some grants or scholarships?", "Each opportunity is published for a particular group (for example students, or business owners and artisans). You see the ones that match the membership category in your profile. You can change your category under Profile."],
         ["Are scholarships verified?", "Opportunities are published by Mentorship+ administrators. Confirm eligibility and deadlines directly with the provider before applying."],
         ["Can counsellors see my journal?", "Your private wellbeing entries are tied to your account and are not included in general administrator analytics or counsellor discussion access."],
         ["Is automated AI counselling available?", "No. This build does not simulate AI conversations. You can contact a human counsellor through the counselling feature."]

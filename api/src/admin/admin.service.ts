@@ -7,9 +7,14 @@ import { ConfigService } from '@nestjs/config';
 import { MailService } from '../mail/mail.service';
 import { StorageService, type UploadableImage } from '../storage/storage.service';
 import { ServiceAreasService } from '../service-areas/service-areas.service';
-import { CONTENT_IMAGE_FOLDER } from '../content/content.constants';
+import { CONTENT_IMAGE_FOLDER, DEFAULT_AUDIENCE, type Audience } from '../content/content.constants';
 import { createNotification } from '../notifications/notifications.service';
 import { assignWaitingDiscussions, countActiveDiscussions, MAX_ACTIVE_DISCUSSIONS } from '../discussions/assignment.util';
+
+type AudienceInput = { audienceCategories?: string[]; audienceSubcategories?: string[] };
+type ResourceInput = { title: string; category: string; readTime?: string; description: string; imageUrl?: string | null } & AudienceInput;
+type ScholarshipInput = { title: string; provider: string; level: string; deadline: string; eligibility: string; description: string; imageUrl?: string | null; applyUrl?: string | null } & AudienceInput;
+type GrantInput = { title: string; provider: string; amount?: string | null; deadline?: string | null; eligibility: string; description: string; imageUrl?: string | null; applyUrl?: string | null } & AudienceInput;
 
 @Injectable()
 export class AdminService {
@@ -32,20 +37,54 @@ export class AdminService {
     return url;
   }
 
-  async createResource(actorId: string, input: { title: string; category: string; readTime?: string; description: string; imageUrl?: string | null }) {
+  /**
+   * Checks "who is this for" against the real membership categories and subcategories.
+   * Returns `fallback` when neither list was sent (the type's default on create, `undefined` = unchanged on update).
+   */
+  private async resolveAudience(input: AudienceInput, fallback: Audience | undefined): Promise<Audience | undefined> {
+    if (input.audienceCategories === undefined && input.audienceSubcategories === undefined) return fallback;
+    const clean = (values: string[] | undefined) => [...new Set((values ?? []).map((value) => value.trim()).filter(Boolean))];
+    const audienceCategories = clean(input.audienceCategories);
+    const audienceSubcategories = clean(input.audienceSubcategories);
+    if (audienceCategories.length) {
+      const found = await this.prisma.membershipCategory.findMany({ where: { slug: { in: audienceCategories } }, select: { slug: true } });
+      const unknown = audienceCategories.filter((slug) => !found.some((item) => item.slug === slug));
+      if (unknown.length) throw new BadRequestException(`Unknown membership category: ${unknown.join(', ')}.`);
+    }
+    if (audienceSubcategories.length) {
+      const found = await this.prisma.membershipSubcategory.findMany({ where: { slug: { in: audienceSubcategories } }, select: { slug: true } });
+      const unknown = audienceSubcategories.filter((slug) => !found.some((item) => item.slug === slug));
+      if (unknown.length) throw new BadRequestException(`Unknown membership subcategory: ${unknown.join(', ')}.`);
+    }
+    return { audienceCategories, audienceSubcategories };
+  }
+
+  /** Optional official link: undefined = unchanged, empty/null = removed. Only http(s) links are stored. */
+  private applyUrl(value: string | null | undefined): string | null | undefined {
+    if (value === undefined) return undefined;
+    const url = typeof value === 'string' ? value.trim() : '';
+    if (!url) return null;
+    if (!/^https?:\/\//i.test(url)) throw new BadRequestException('Enter a full web address starting with https://, or leave the link empty.');
+    return url;
+  }
+
+  async createResource(actorId: string, input: ResourceInput) {
     const imageUrl = this.managedImageUrl(input.imageUrl);
-    const resource = await this.prisma.resource.create({ data: { title: input.title.trim(), category: input.category.trim(), readTime: input.readTime?.trim() || '5 min read', description: input.description.trim(), imageUrl } });
+    const audience = (await this.resolveAudience(input, DEFAULT_AUDIENCE.resource)) as Audience;
+    const resource = await this.prisma.resource.create({ data: { title: input.title.trim(), category: input.category.trim(), readTime: input.readTime?.trim() || '5 min read', description: input.description.trim(), imageUrl, ...audience } });
     await this.audit(actorId, 'RESOURCE_CREATED', 'Resource', resource.id);
     return resource;
   }
-  async updateResource(actorId: string, id: string, input: { title: string; category: string; readTime?: string; description: string; imageUrl?: string | null }) {
+  async updateResource(actorId: string, id: string, input: ResourceInput) {
     const existing = await this.prisma.resource.findUnique({ where: { id }, select: { id: true, imageUrl: true } });
     if (!existing) throw new NotFoundException('Resource not found.');
     const imageUrl = input.imageUrl === undefined ? undefined : this.managedImageUrl(input.imageUrl);
+    const audience = await this.resolveAudience(input, undefined);
     const resource = await this.prisma.resource.update({ where: { id }, data: {
       title: input.title.trim(), category: input.category.trim(), description: input.description.trim(),
       ...(input.readTime?.trim() ? { readTime: input.readTime.trim() } : {}),
       ...(imageUrl !== undefined ? { imageUrl } : {}),
+      ...(audience ?? {}),
     } });
     await this.audit(actorId, 'RESOURCE_UPDATED', 'Resource', id);
     if (imageUrl !== undefined && existing.imageUrl && existing.imageUrl !== imageUrl) void this.storage.deleteByUrl(existing.imageUrl);
@@ -73,25 +112,31 @@ export class AdminService {
     if (!Number.isFinite(deadline.getTime())) throw new BadRequestException('Enter a valid scholarship deadline.');
     return deadline;
   }
-  async createScholarship(actorId: string, input: { title: string; provider: string; level: string; deadline: string; eligibility: string; description: string; imageUrl?: string | null }) {
+  async createScholarship(actorId: string, input: ScholarshipInput) {
     const deadline = this.parseDeadline(input.deadline);
     if (deadline.getTime() <= Date.now()) throw new BadRequestException('The scholarship deadline must be in the future.');
     const imageUrl = this.managedImageUrl(input.imageUrl);
-    const scholarship = await this.prisma.scholarship.create({ data: { title: input.title.trim(), provider: input.provider.trim(), level: input.level.trim(), deadline, eligibility: input.eligibility.trim(), description: input.description.trim(), imageUrl } });
+    const applyUrl = this.applyUrl(input.applyUrl) ?? null;
+    const audience = (await this.resolveAudience(input, DEFAULT_AUDIENCE.scholarship)) as Audience;
+    const scholarship = await this.prisma.scholarship.create({ data: { title: input.title.trim(), provider: input.provider.trim(), level: input.level.trim(), deadline, eligibility: input.eligibility.trim(), description: input.description.trim(), imageUrl, applyUrl, ...audience } });
     await this.audit(actorId, 'SCHOLARSHIP_CREATED', 'Scholarship', scholarship.id);
     return scholarship;
   }
-  async updateScholarship(actorId: string, id: string, input: { title: string; provider: string; level: string; deadline: string; eligibility: string; description: string; imageUrl?: string | null }) {
+  async updateScholarship(actorId: string, id: string, input: ScholarshipInput) {
     const existing = await this.prisma.scholarship.findUnique({ where: { id }, select: { id: true, deadline: true, imageUrl: true } });
     if (!existing) throw new NotFoundException('Scholarship not found.');
     const deadline = this.parseDeadline(input.deadline);
     // An already-expired listing can still be corrected; only a *changed* deadline must lie in the future.
     if (deadline.getTime() !== existing.deadline.getTime() && deadline.getTime() <= Date.now()) throw new BadRequestException('The scholarship deadline must be in the future.');
     const imageUrl = input.imageUrl === undefined ? undefined : this.managedImageUrl(input.imageUrl);
+    const applyUrl = this.applyUrl(input.applyUrl);
+    const audience = await this.resolveAudience(input, undefined);
     const scholarship = await this.prisma.scholarship.update({ where: { id }, data: {
       title: input.title.trim(), provider: input.provider.trim(), level: input.level.trim(), deadline,
       eligibility: input.eligibility.trim(), description: input.description.trim(),
       ...(imageUrl !== undefined ? { imageUrl } : {}),
+      ...(applyUrl !== undefined ? { applyUrl } : {}),
+      ...(audience ?? {}),
     } });
     await this.audit(actorId, 'SCHOLARSHIP_UPDATED', 'Scholarship', id);
     if (imageUrl !== undefined && existing.imageUrl && existing.imageUrl !== imageUrl) void this.storage.deleteByUrl(existing.imageUrl);
@@ -111,6 +156,66 @@ export class AdminService {
     await this.audit(actorId, isActive ? 'SCHOLARSHIP_PUBLISHED' : 'SCHOLARSHIP_UNPUBLISHED', 'Scholarship', id);
     return scholarship;
   }
+  /* ---------------------------------------------------------------- grants */
+  async listGrants() {
+    return this.prisma.grant.findMany({ orderBy: [{ deadline: { sort: 'asc', nulls: 'last' } }, { createdAt: 'desc' }] });
+  }
+  /** Grant deadlines are optional (open all year). A new or changed deadline must be in the future. */
+  private grantDeadline(value: string | null | undefined, existing?: Date | null): Date | null | undefined {
+    if (value === undefined) return undefined;
+    if (value === null || value === '') return null;
+    const deadline = new Date(value);
+    if (!Number.isFinite(deadline.getTime())) throw new BadRequestException('Enter a valid grant deadline.');
+    const unchanged = existing && existing.getTime() === deadline.getTime();
+    if (!unchanged && deadline.getTime() <= Date.now()) throw new BadRequestException('The grant deadline must be in the future, or leave it empty for a grant that is open all year.');
+    return deadline;
+  }
+  async createGrant(actorId: string, input: GrantInput) {
+    const deadline = this.grantDeadline(input.deadline) ?? null;
+    const imageUrl = this.managedImageUrl(input.imageUrl);
+    const applyUrl = this.applyUrl(input.applyUrl) ?? null;
+    const audience = (await this.resolveAudience(input, DEFAULT_AUDIENCE.grant)) as Audience;
+    const grant = await this.prisma.grant.create({ data: {
+      title: input.title.trim(), provider: input.provider.trim(), amount: input.amount?.trim() || null, deadline,
+      eligibility: input.eligibility.trim(), description: input.description.trim(), imageUrl, applyUrl, ...audience,
+    } });
+    await this.audit(actorId, 'GRANT_CREATED', 'Grant', grant.id);
+    return grant;
+  }
+  async updateGrant(actorId: string, id: string, input: GrantInput) {
+    const existing = await this.prisma.grant.findUnique({ where: { id }, select: { id: true, deadline: true, imageUrl: true } });
+    if (!existing) throw new NotFoundException('Grant not found.');
+    const deadline = this.grantDeadline(input.deadline, existing.deadline);
+    const imageUrl = input.imageUrl === undefined ? undefined : this.managedImageUrl(input.imageUrl);
+    const applyUrl = this.applyUrl(input.applyUrl);
+    const audience = await this.resolveAudience(input, undefined);
+    const grant = await this.prisma.grant.update({ where: { id }, data: {
+      title: input.title.trim(), provider: input.provider.trim(), eligibility: input.eligibility.trim(), description: input.description.trim(),
+      ...(input.amount !== undefined ? { amount: input.amount?.trim() || null } : {}),
+      ...(deadline !== undefined ? { deadline } : {}),
+      ...(imageUrl !== undefined ? { imageUrl } : {}),
+      ...(applyUrl !== undefined ? { applyUrl } : {}),
+      ...(audience ?? {}),
+    } });
+    await this.audit(actorId, 'GRANT_UPDATED', 'Grant', id);
+    if (imageUrl !== undefined && existing.imageUrl && existing.imageUrl !== imageUrl) void this.storage.deleteByUrl(existing.imageUrl);
+    return grant;
+  }
+  async deleteGrant(actorId: string, id: string) {
+    const existing = await this.prisma.grant.findUnique({ where: { id }, select: { id: true, imageUrl: true } });
+    if (!existing) throw new NotFoundException('Grant not found.');
+    await this.prisma.grant.delete({ where: { id } });
+    await this.audit(actorId, 'GRANT_DELETED', 'Grant', id);
+    void this.storage.deleteByUrl(existing.imageUrl);
+    return { success: true };
+  }
+  async setGrantActive(actorId: string, id: string, isActive: boolean) {
+    const grant = await this.prisma.grant.update({ where: { id }, data: { isActive } }).catch(() => null);
+    if (!grant) throw new NotFoundException('Grant not found.');
+    await this.audit(actorId, isActive ? 'GRANT_PUBLISHED' : 'GRANT_UNPUBLISHED', 'Grant', id);
+    return grant;
+  }
+
   async listServiceAreas() { return this.serviceAreas.listAll(); }
   async createServiceArea(actorId: string, input: { state: string; lga: string; lcda: string }) {
     const area = await this.serviceAreas.create(input);
@@ -144,7 +249,7 @@ export class AdminService {
   }
 
   async dashboard() {
-    const [users, members, counsellors, admins, topics, openDiscussions, appointments, pendingRatings, resources, scholarships] = await Promise.all([
+    const [users, members, counsellors, admins, topics, openDiscussions, appointments, pendingRatings, resources, scholarships, grants] = await Promise.all([
       this.prisma.user.count(),
       this.prisma.user.count({ where: { role: UserRole.MEMBER, status: UserStatus.ACTIVE } }),
       this.prisma.user.count({ where: { role: UserRole.COUNSELLOR, status: UserStatus.ACTIVE } }),
@@ -155,8 +260,9 @@ export class AdminService {
       this.prisma.counsellorRating.count({ where: { moderationStatus: 'PENDING' } }),
       this.prisma.resource.count({ where: { isActive: true } }),
       this.prisma.scholarship.count({ where: { isActive: true } }),
+      this.prisma.grant.count({ where: { isActive: true } }),
     ]);
-    return { users, members, counsellors, admins, topics, openDiscussions, appointments, pendingRatings, resources, scholarships };
+    return { users, members, counsellors, admins, topics, openDiscussions, appointments, pendingRatings, resources, scholarships, grants };
   }
 
   async listUsers(query = '') {

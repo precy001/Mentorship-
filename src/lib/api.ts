@@ -76,6 +76,8 @@ export type ApiUser = {
     lga?: string | null;
     lcda?: string | null;
     school?: string | null;
+    /** National Identification Number (11 digits). Collected, not verified. */
+    nin?: string | null;
     category?: {
       id: string;
       name: string;
@@ -301,6 +303,7 @@ export async function apiRegister(input: {
   lga: string;
   lcda: string;
   school?: string;
+  nin: string;
   categoryId: string;
   subcategoryId: string;
 }) {
@@ -503,6 +506,8 @@ export async function apiAdminUploadContentImage(uri: string): Promise<{ imageUr
 export type AdminDashboardStats = {
   users: number; members: number; counsellors: number; admins: number;
   topics: number; openDiscussions: number; appointments: number; pendingRatings: number; resources: number; scholarships: number;
+  /** Missing from older API versions. */
+  grants?: number;
 };
 export type AdminUser = {
   id: string; email: string; displayName: string | null;
@@ -553,14 +558,25 @@ export const apiUpdateAppointmentStatus = (id: string, status: "CONFIRMED" | "CO
 export const apiAdminSetAccountStatus = (userId: string, status: "ACTIVE" | "SUSPENDED" | "DEACTIVATED") => apiRequest(`/admin/users/${encodeURIComponent(userId)}/status`, { method: "PATCH", body: JSON.stringify({ status }) }, true);
 export const apiAdminInviteCounsellor = (email: string, topicIds: string[]) => apiRequest<{ message: string }>("/admin/counsellors/invitations", { method: "POST", body: JSON.stringify({ email: email.trim().toLowerCase(), topicIds }) }, true);
 export const apiAcceptCounsellorInvitation = (token: string) => apiRequest<{ id: string; email: string; role: string }>("/admin/counsellors/invitations/accept", { method: "POST", body: JSON.stringify({ token }) }, true);
-export type AdminResource = { id: string; title: string; category: string; readTime: string; description: string; imageUrl: string | null; isActive: boolean; createdAt?: string };
-export type AdminScholarship = { id: string; title: string; provider: string; level: string; deadline: string; eligibility: string; description: string; imageUrl: string | null; isActive: boolean; createdAt?: string };
+/** Who an item is for: membership category / subcategory slugs. Both empty = everyone. */
+export type Audience = { audienceCategories: string[]; audienceSubcategories: string[] };
+export type AdminResource = { id: string; title: string; category: string; readTime: string; description: string; imageUrl: string | null; isActive: boolean; createdAt?: string } & Partial<Audience>;
+export type AdminScholarship = { id: string; title: string; provider: string; level: string; deadline: string; eligibility: string; description: string; imageUrl: string | null; applyUrl?: string | null; isActive: boolean; createdAt?: string } & Partial<Audience>;
+/** A grant may be open all year (`deadline` null). */
+export type AdminGrant = { id: string; title: string; provider: string; amount: string | null; deadline: string | null; eligibility: string; description: string; imageUrl: string | null; applyUrl: string | null; isActive: boolean; createdAt?: string } & Partial<Audience>;
 /** `imageUrl`: omit to keep the current image on update, null to remove it. */
-export type ResourceInput = { title: string; category: string; readTime: string; description: string; imageUrl?: string | null };
-export type ScholarshipInput = { title: string; provider: string; level: string; deadline: string; eligibility: string; description: string; imageUrl?: string | null };
+export type ResourceInput = { title: string; category: string; readTime: string; description: string; imageUrl?: string | null } & Partial<Audience>;
+export type ScholarshipInput = { title: string; provider: string; level: string; deadline: string; eligibility: string; description: string; imageUrl?: string | null; applyUrl?: string | null } & Partial<Audience>;
+export type GrantInput = { title: string; provider: string; amount: string | null; deadline: string | null; eligibility: string; description: string; imageUrl?: string | null; applyUrl: string | null } & Partial<Audience>;
 export type ServiceAreaRecord = { id: string; state: string; lga: string; lcda: string; isActive: boolean };
 export type PublicResource = AdminResource;
 export type PublicScholarship = AdminScholarship;
+export type PublicGrant = AdminGrant;
+export const apiAdminGrants = () => apiRequest<AdminGrant[]>("/admin/grants", {}, true);
+export const apiAdminCreateGrant = (input: GrantInput) => apiRequest<AdminGrant>("/admin/grants", { method: "POST", body: JSON.stringify(input) }, true);
+export const apiAdminUpdateGrant = (id: string, input: GrantInput) => apiRequest<AdminGrant>(`/admin/grants/${encodeURIComponent(id)}`, { method: "PUT", body: JSON.stringify(input) }, true);
+export const apiAdminDeleteGrant = (id: string) => apiRequest<{ success: boolean }>(`/admin/grants/${encodeURIComponent(id)}`, { method: "DELETE" }, true);
+export const apiAdminSetGrantActive = (id: string, isActive: boolean) => apiRequest<AdminGrant>(`/admin/grants/${encodeURIComponent(id)}/active`, { method: "PATCH", body: JSON.stringify({ isActive }) }, true);
 export const apiAdminResources = () => apiRequest<AdminResource[]>("/admin/resources", {}, true);
 export const apiAdminCreateResource = (input: ResourceInput) => apiRequest<AdminResource>("/admin/resources", { method: "POST", body: JSON.stringify(input) }, true);
 export const apiAdminUpdateResource = (id: string, input: ResourceInput) => apiRequest<AdminResource>(`/admin/resources/${encodeURIComponent(id)}`, { method: "PUT", body: JSON.stringify(input) }, true);
@@ -588,6 +604,7 @@ export const apiGetServiceLcdas = (state: string, lga: string) => apiRequest<{ l
 export const apiGetLocations = () => apiRequest<{ locations: Omit<ServiceAreaRecord, "isActive">[] }>("/membership/locations");
 export const apiGetPublicResources = () => apiRequest<PublicResource[]>("/content/resources");
 export const apiGetPublicScholarships = () => apiRequest<PublicScholarship[]>("/content/scholarships");
+export const apiGetPublicGrants = () => apiRequest<PublicGrant[]>("/content/grants");
 export type PendingRating = { id: string; score: number; feedback: string | null; createdAt: string; author: { id: string; displayName: string | null; email: string }; counsellor: { user: { id: string; displayName: string | null; email: string } }; discussion: { id: string; title: string } | null; appointment: { id: string; startsAt: string } | null };
 export const apiAdminPendingRatings = () => apiRequest<PendingRating[]>("/ratings/pending", {}, true);
 export const apiAdminModerateRating = (id: string, status: "APPROVED" | "REJECTED") => apiRequest(`/ratings/${encodeURIComponent(id)}/moderation`, { method: "PATCH", body: JSON.stringify({ status }) }, true);
@@ -605,7 +622,7 @@ export const apiMyRatings = () => apiRequest<MyRating[]>("/ratings/mine", {}, tr
 export const apiRescheduleAppointment = (id: string, startsAt: string, endsAt: string) => apiRequest<AppointmentRecord>(`/appointments/${encodeURIComponent(id)}/reschedule`, { method: "PATCH", body: JSON.stringify({ startsAt, endsAt }) }, true);
 
 /** Edits the signed-in member's own details. Only the fields provided are changed. */
-export const apiUpdateProfile = (input: { displayName?: string; phoneNumber?: string; dateOfBirth?: string; school?: string }) => apiRequest<ApiUser>("/profile", { method: "PATCH", body: JSON.stringify(input) }, true);
+export const apiUpdateProfile = (input: { displayName?: string; phoneNumber?: string; dateOfBirth?: string; school?: string; nin?: string }) => apiRequest<ApiUser>("/profile", { method: "PATCH", body: JSON.stringify(input) }, true);
 export const apiMarkWelcomeSeen = () => apiRequest<{ welcomeSeenAt: string }>("/auth/welcome-seen", { method: "POST" }, true);
 
 export type NotificationPage = { items: UserNotification[]; hasMore: boolean };

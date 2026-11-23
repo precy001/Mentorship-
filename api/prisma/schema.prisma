@@ -358,6 +358,10 @@ model Resource {
   readTime    String   @default("5 min read") @db.VarChar(40)
   description String   @db.VarChar(2000)
   imageUrl    String?  @db.VarChar(2048)
+  /// Membership category slugs this item is for. Both audience lists empty = everyone.
+  audienceCategories    String[] @default([])
+  /// Membership subcategory slugs this item is for.
+  audienceSubcategories String[] @default([])
   isActive    Boolean  @default(true)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -374,9 +378,34 @@ model Scholarship {
   eligibility String   @db.VarChar(2000)
   description String   @db.VarChar(2000)
   imageUrl    String?  @db.VarChar(2048)
+  /// Official page where members can read more or apply.
+  applyUrl    String?  @db.VarChar(2048)
+  audienceCategories    String[] @default([])
+  audienceSubcategories String[] @default([])
   isActive    Boolean  @default(true)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+  @@index([isActive, deadline])
+}
+
+/// Grants for working members (business owners, artisans, freelancers, job seekers…).
+/// A grant may be open all year, so the deadline is optional.
+model Grant {
+  id          String    @id @default(cuid())
+  seedKey     String?   @unique @db.VarChar(80)
+  title       String    @db.VarChar(180)
+  provider    String    @db.VarChar(180)
+  amount      String?   @db.VarChar(120)
+  deadline    DateTime?
+  eligibility String    @db.VarChar(2000)
+  description String    @db.VarChar(2000)
+  applyUrl    String?   @db.VarChar(2048)
+  imageUrl    String?   @db.VarChar(2048)
+  audienceCategories    String[] @default([])
+  audienceSubcategories String[] @default([])
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
   @@index([isActive, deadline])
 }
 

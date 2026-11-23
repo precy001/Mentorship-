@@ -1,61 +1,62 @@
-# Overlay: sign-in / verification-link / dashboard fixes
+# Overlay: grants, audience targeting, NIN, insights fix and UX improvements
 
-This ZIP contains only new and changed files, at their exact paths inside `mentorship-plus`.
+This ZIP holds only new and changed files, at their exact paths inside `mentorship-plus` (app files at the top
+level, API files under `api/`). `AUDIT.md` has the full audit.
 
-## Install
-1. Stop the dev server.
-2. Back up or commit your project.
-3. Extract this ZIP **into the project root** (`C:\Users\Anita Nwaobi\Documents\Projects\mentorship-plus`) and choose
-   **Replace** for every file. Do not copy files across by hand: several are named `index.tsx` and each belongs in a
-   different folder.
-4. Run `npx expo start -c`.
+## 1. Install
+1. Commit or back up the project.
+2. Extract this ZIP **into the project root** (`C:\Users\Anita Nwaobi\Documents\Projects\mentorship-plus`) and
+   choose **Replace** for every file. Don't copy files by hand, because several share names (`index.tsx`).
+3. Check it landed (PowerShell, project folder):
+   ```
+   Test-Path "app\content\[kind]\[id].tsx"
+   Test-Path "api\prisma\migrations\20261123120000_grants_and_audience\migration.sql"
+   Select-String -Path "app\(student)\explore.tsx" -Pattern "Grants"
+   ```
+   The first two print `True`, and the last one prints matching lines.
 
-| Path | Action |
-|---|---|
-| `app/+native-intent.ts` | New |
-| `src/lib/routes.ts` | New |
-| `app/_layout.tsx` | Replace |
-| `app/index.tsx` | Replace (splash; design unchanged) |
-| `app/auth.tsx` | Replace |
-| `app/verify.tsx` | Replace |
-| `app/reset-password.tsx` | Replace |
-| `app/counsellor-invite.tsx` | Replace |
-| `app/(admin)/index.tsx` | Replace |
-| `app/(counsellor)/index.tsx` | Replace |
-| `app/(student)/profile.tsx` | Replace |
-| `src/components/WelcomeGate.tsx` | Replace |
+## 2. Deploy the API first (important)
+The API rejects fields it doesn't recognise. If the app update reaches phones before the new API is live,
+registration fails with "property nin should not exist". So, in this order:
 
-## Check it landed correctly (PowerShell, in the project folder)
+1. Push the code so Render rebuilds the API.
+2. Apply the migration to the production database (back up first):
+   ```
+   npm --prefix api run prisma:migrate:deploy
+   ```
+   If your Render build command already runs `prisma migrate deploy`, this happens automatically. The migration
+   adds the grants table, audience columns and 5 placeholder grants, and marks existing scholarships as "for
+   students". It doesn't delete anything.
+3. Check that `https://mentorship-x1fa.onrender.com/api/v1/content/grants` returns a list of 5 grants.
+
+## 3. Then update the app
+All app changes are JavaScript (no new native modules), so an over-the-air update works:
 ```
-Select-String -Path app\_layout.tsx -Pattern "Stack.Protected"
-Select-String -Path "app\(admin)\index.tsx" -Pattern "Admin dashboard"
-Test-Path "app\+native-intent.ts"
+eas update --channel preview --message "Grants, audience targeting, NIN, insights fix"
 ```
-The first two should print matching lines and the last should print `True`.
+Testers should close and reopen the app (possibly twice). For local testing: `npx expo start -c`.
 
-## Getting it to testers
-All changes are JavaScript only, with no native or `app.json` changes, so testers with the current APK can get them
-by update:
-```
-eas update --channel preview --message "Fix blank screen after sign-in and verification link"
-```
-Testers should fully close and reopen the app. The update downloads on that launch and applies on the next one, so
-they may need to close and reopen it twice. A fresh build also works:
-`eas build --platform android --profile preview`.
+## 4. What to test
+1. **Tab bar (Android):** scroll Home over a photo. The bottom bar should be solid white, with nothing showing
+   through or around it.
+2. **Mood → insights:** Activities → Wellbeing check-in → save a mood. "Your week" updates straight away. Then go to
+   Profile: "Mood check-ins" has gone up by one.
+3. **Grants targeting:** as an admin, open Admin → Grants and publish a grant for one subcategory (for example
+   Artisan). Sign in as a member in that subcategory: it shows in Explore → Grants and on Home. A student member
+   shouldn't see it.
+4. **Who is this for? on resources and scholarships:** create one of each for a specific group and confirm who
+   can see it.
+5. **NIN:** register a new account (NIN is required, 11 digits). An existing member sees "Complete your profile"
+   on Home. Add the NIN in Profile → Save details, and the prompt disappears.
+6. **Item page:** tap any card on Home or Explore. You should get the full text, deadline, Save, Share and (if a
+   link is set) Apply.
+7. **Conversation:** open a discussion on two phones (member and counsellor). A reply appears on the other phone
+   within about 15 seconds without leaving the screen.
 
-Updates only reach builds with the same runtime version (`version` in `app.json`, currently `1.0.0`). If the
-testers' APK was built with a different version, make a new build instead.
-
-## What to test
-1. **Sign-in (Android):** sign in as a member, a counsellor and an admin. Each should land on its own dashboard
-   once, with no blank screen. Android Back on the dashboard should leave the app.
-2. **Admin on iPhone (Expo Go):** sign in as admin. The dashboard should appear once.
-3. **Verification link:** register, switch to the email app and tap the link while the app is in the background.
-   The app should open on "Confirming your email…" and then show "Email verified" with **Continue to sign in**.
-   Repeat with the app fully closed.
-4. **Sign-out:** sign out from each role. You should land on the sign-in screen.
-5. **First-time welcome:** sign in with a brand-new account. The welcome sheet should slide up shortly after the
-   dashboard appears.
+## Placeholder grants
+The 5 placeholder grants say "Mentorship+ (placeholder listing)" and explain they are placeholders. Edit them into
+real opportunities, or unpublish them, in Admin → Grants before launch.
 
 ## Rollback
-Restore your backup or `git checkout` the listed files, and delete `app/+native-intent.ts` and `src/lib/routes.ts`.
+Restore your backup or `git checkout` the listed files, and delete the new files. The database migration is
+additive. If you roll back the code, the extra columns and grants table can stay in place without harm.

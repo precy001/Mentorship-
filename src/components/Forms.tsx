@@ -17,6 +17,9 @@ import { colors, radii } from "@/src/lib/theme";
 import { pickImage, type PickedImage } from "@/src/lib/imagePicker";
 import { formatDisplayDate, parseDateString, toDateString } from "@/src/lib/validation";
 import type { ToastState } from "@/src/lib/feedback";
+import type { Audience, MembershipCategory } from "@/src/lib/api";
+import { audienceLabel, isEveryone } from "@/src/lib/audience";
+import { Chip } from "@/src/components/UI";
 
 /* ------------------------------------------------------------------ shared field chrome */
 
@@ -39,6 +42,76 @@ function FieldMessage({ error, helper }: { error?: string | null; helper?: strin
     );
   }
   return helper ? <Text style={styles.helper}>{helper}</Text> : null;
+}
+
+/* ------------------------------------------------------------------ audience ("who is this for?") */
+
+/**
+ * Lets an administrator decide who sees a resource, scholarship or grant: everyone, or chosen membership
+ * categories and/or subcategories. Selecting a whole category covers all of its subcategories.
+ * The Everyone / Specific groups switch is derived from the value itself, so the two can never disagree.
+ */
+export function AudienceField({
+  value,
+  onChange,
+  categories,
+  suggested,
+  disabled,
+  loading,
+}: {
+  value: Audience;
+  onChange: (next: Audience) => void;
+  categories: MembershipCategory[];
+  /** Used when switching from Everyone to Specific groups (the content type's usual audience). */
+  suggested: Audience;
+  disabled?: boolean;
+  loading?: boolean;
+}) {
+  const everyone = isEveryone(value);
+  const toggle = (list: "audienceCategories" | "audienceSubcategories", slug: string) => {
+    const current = value[list];
+    const next = { ...value, [list]: current.includes(slug) ? current.filter((item) => item !== slug) : [...current, slug] };
+    onChange(next);
+  };
+  const chooseSpecific = () => {
+    if (!everyone) return;
+    const fallback = categories[0] ? { audienceCategories: [categories[0].slug], audienceSubcategories: [] } : value;
+    onChange(isEveryone(suggested) ? fallback : suggested);
+  };
+  return (
+    <View style={{ gap: 10 }}>
+      <FieldLabel label="Who is this for?" required />
+      <View accessibilityRole="radiogroup" style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+        <Chip label="Everyone" icon="people-outline" accessibilityRole="radio" selected={everyone} disabled={disabled} onPress={() => onChange({ audienceCategories: [], audienceSubcategories: [] })} />
+        <Chip label="Specific groups" icon="funnel-outline" accessibilityRole="radio" selected={!everyone} disabled={disabled || (!categories.length && everyone)} onPress={chooseSpecific} />
+      </View>
+      {loading && !categories.length ? <Text style={styles.helper}>Loading membership groups…</Text> : null}
+      {!everyone ? categories.map((category) => {
+        const wholeCategory = value.audienceCategories.includes(category.slug);
+        return (
+          <View key={category.id} style={{ gap: 8, backgroundColor: colors.surfaceSecondary, borderRadius: radii.md, padding: 12 }}>
+            <Chip label={`All in ${category.name}`} icon={wholeCategory ? "checkmark-circle" : "ellipse-outline"} accessibilityRole="checkbox" selected={wholeCategory} disabled={disabled} onPress={() => toggle("audienceCategories", category.slug)} />
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+              {category.subcategories.map((sub) => (
+                <Chip
+                  key={sub.id}
+                  label={sub.name}
+                  accessibilityRole="checkbox"
+                  selected={wholeCategory || value.audienceSubcategories.includes(sub.slug)}
+                  disabled={disabled || wholeCategory}
+                  onPress={() => toggle("audienceSubcategories", sub.slug)}
+                />
+              ))}
+            </View>
+          </View>
+        );
+      }) : null}
+      <View style={{ flexDirection: "row", gap: 8, alignItems: "flex-start" }}>
+        <Ionicons name="eye-outline" size={16} color={colors.primary} style={{ marginTop: 1 }} />
+        <Text style={[styles.helper, { flex: 1, color: colors.ink }]}>Shown to: <Text style={{ fontWeight: "800" }}>{audienceLabel(value, categories)}</Text></Text>
+      </View>
+    </View>
+  );
 }
 
 /* ------------------------------------------------------------------ dropdown / select */

@@ -8,7 +8,7 @@ import { colors } from "@/src/lib/theme";
 import { parseDateString, toDateString } from "@/src/lib/validation";
 import { apiGetMembershipCategories, apiRegister, type MembershipCategory } from "@/src/lib/api";
 
-type Errors = Partial<Record<"name" | "email" | "whatsapp" | "dob" | "category" | "subcategory" | "password" | "confirm", string>>;
+type Errors = Partial<Record<"name" | "email" | "whatsapp" | "dob" | "nin" | "category" | "subcategory" | "password" | "confirm", string>>;
 
 export default function RegisterBiodata() {
   const p = useLocalSearchParams<{ state?: string; lga?: string; lcda?: string }>();
@@ -16,6 +16,7 @@ export default function RegisterBiodata() {
   // Stored as YYYY-MM-DD; the previous dd/mm/yyyy text was only ever converted to this before submission.
   const [dob, setDob] = useState("");
   const [school, setSchool] = useState(""); const [busy, setBusy] = useState(false);
+  const [nin, setNin] = useState("");
   const [categories, setCategories] = useState<MembershipCategory[]>([]);
   const [categoryId, setCategoryId] = useState(""); const [subcategoryId, setSubcategoryId] = useState("");
   const [categoriesLoading, setCategoriesLoading] = useState(true);
@@ -54,6 +55,7 @@ export default function RegisterBiodata() {
     const birthDate = dob ? parseDateString(dob) : null;
     if (!dob) fail("dob", "Select your date of birth", "Choose your date of birth from the calendar.", "Choose your date of birth.");
     else if (!birthDate || dob > today) fail("dob", "Check your date of birth", "Choose a valid date that is not in the future.", "Choose a valid date that is not in the future.");
+    if (!/^\d{11}$/.test(nin)) fail("nin", "Check your NIN", "Enter your 11-digit National Identification Number (NIN).", "Enter your 11-digit NIN.");
     if (!categoryId) fail("category", "Choose your account type", "Select a category and the subcategory that best describes you.", "Select the category that best describes you.");
     else if (!subcategoryId) fail("subcategory", "Choose your account type", "Select a category and the subcategory that best describes you.", "Select a subcategory.");
     if (password.length < 8) fail("password", "Password too short", "Use at least 8 characters.", "Use at least 8 characters.");
@@ -63,7 +65,7 @@ export default function RegisterBiodata() {
 
     setBusy(true);
     try {
-      const result = await apiRegister({ email: email.trim(), password, displayName: name.trim(), phoneNumber: whatsapp.trim(), dateOfBirth: dob, stateOfResidence: String(p.state || ""), lga: String(p.lga || ""), lcda: String(p.lcda || ""), school: school.trim() || undefined, categoryId, subcategoryId });
+      const result = await apiRegister({ email: email.trim(), password, displayName: name.trim(), phoneNumber: whatsapp.trim(), dateOfBirth: dob, stateOfResidence: String(p.state || ""), lga: String(p.lga || ""), lcda: String(p.lcda || ""), school: school.trim() || undefined, nin, categoryId, subcategoryId });
       Alert.alert("Registration submitted", result.message || "Your account has been created. Check your email to verify your address before signing in.", [{ text: "Continue to sign in", onPress: () => router.replace("/auth?mode=signin") }]);
     } catch (error) { Alert.alert("Registration failed", error instanceof Error ? error.message : "We could not create your account. Please try again."); }
     finally { setBusy(false); }
@@ -108,6 +110,7 @@ export default function RegisterBiodata() {
       <Field label="Email address" icon="mail-outline" value={email} onChangeText={v => { setEmail(v); clearError("email"); }} placeholder="name@example.com" autoCapitalize="none" autoCorrect={false} keyboardType="email-address" autoComplete="email" textContentType="emailAddress" returnKeyType="next" required error={errors.email} editable={!busy} />
       <Field label="WhatsApp number" icon="logo-whatsapp" value={whatsapp} onChangeText={v => { setWhatsapp(v); clearError("whatsapp"); }} placeholder="+234 801 234 5678" keyboardType="phone-pad" autoComplete="tel" textContentType="telephoneNumber" required error={errors.whatsapp} editable={!busy} />
       <DatePickerField label="Date of birth" value={dob} onChange={v => { setDob(v); clearError("dob"); }} minDate={`${now.getFullYear() - 100}-01-01`} maxDate={today} defaultView={eighteenYearsAgo} descendingYears placeholder="Select date of birth" required error={errors.dob} disabled={busy} />
+      <Field label="National Identification Number (NIN)" icon="card-outline" value={nin} onChangeText={v => { setNin(v.replace(/\D/g, "").slice(0, 11)); clearError("nin"); }} placeholder="11-digit NIN" keyboardType="number-pad" maxLength={11} required helper="Your 11-digit NIN. It stays private to your account." error={errors.nin} editable={!busy} />
       <Field label="School / institution" icon="school-outline" value={school} onChangeText={setSchool} placeholder="Where you study or studied" autoCapitalize="words" optional editable={!busy} />
     </Card>
 

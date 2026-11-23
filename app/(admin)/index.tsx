@@ -3,12 +3,13 @@ import { Alert, LayoutChangeEvent, Pressable, ScrollView, Text, View } from "rea
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Screen, Card, Button, Field, Pill, Row, SectionHeader, StatTile, Chip, EmptyState, Avatar, LoadingBlock, IconBadge } from "@/src/components/UI";
 import type { IconName } from "@/src/components/UI";
-import { DatePickerField, ImageUploadField, SelectField, SmartImage, Toast } from "@/src/components/Forms";
+import { AudienceField, DatePickerField, ImageUploadField, SelectField, SmartImage, Toast } from "@/src/components/Forms";
 import { colors } from "@/src/lib/theme";
 import { useApp } from "@/src/context/AppContext";
 import {
-  AdminAppointment, AdminDashboardStats, AdminResource, AdminScholarship, AdminTopic, AdminUser, AuditLogRecord,
-  PendingRating, ServiceAreaRecord, UnassignedDiscussion,
+  AdminAppointment, AdminDashboardStats, AdminGrant, AdminResource, AdminScholarship, AdminTopic, AdminUser, AuditLogRecord,
+  Audience, MembershipCategory, PendingRating, ServiceAreaRecord, UnassignedDiscussion,
+  apiAdminCreateGrant, apiAdminDeleteGrant, apiAdminGrants, apiAdminSetGrantActive, apiAdminUpdateGrant, apiGetMembershipCategories,
   apiAdminAppointments, apiAdminAssignTopics, apiAdminAuditLogs, apiAdminAutoAssignDiscussion, apiAdminCreateResource,
   apiAdminCreateScholarship, apiAdminCreateTopic, apiAdminDashboard, apiAdminDeleteResource, apiAdminDeleteScholarship,
   apiAdminInviteCounsellor, apiAdminModerateRating, apiAdminPendingRatings, apiAdminResources, apiAdminScholarships,
@@ -17,6 +18,7 @@ import {
   apiAdminUnassignedDiscussions, apiAdminUpdateResource, apiAdminUpdateScholarship, apiAdminUploadContentImage, apiAdminUsers,
 } from "@/src/lib/api";
 import { confirmAction, errorMessage, isSessionExpired, useToast } from "@/src/lib/feedback";
+import { DEFAULT_AUDIENCE, audienceLabel } from "@/src/lib/audience";
 import type { PickedImage } from "@/src/lib/imagePicker";
 import { READ_MINUTES_MAX, READ_MINUTES_MIN, RESOURCE_CATEGORIES, SCHOLARSHIP_LEVELS, minutesFromReadTime, readTimeLabel, toOptions } from "@/src/lib/options";
 import {
@@ -25,12 +27,16 @@ import {
 } from "@/src/lib/validation";
 
 type FormErrors = Record<string, string | null>;
-type AdminSection = "overview" | "accounts" | "counselling" | "resources" | "scholarships" | "platform";
+type AdminSection = "overview" | "accounts" | "counselling" | "resources" | "scholarships" | "grants" | "platform";
 type Success = { title: string; message: string; toast?: boolean };
-const emptyResource = { title: "", category: "", minutes: "5", description: "" };
+const emptyResource = { title: "", category: "", minutes: "5", description: "", audience: DEFAULT_AUDIENCE.resource };
 const NEW_LGA = "__new__";
 const emptyArea = { state: "Lagos", lga: "", newLga: "", lcda: "" };
-const emptyScholarship = { title: "", provider: "", level: "", deadline: "", eligibility: "", description: "" };
+const emptyScholarship = { title: "", provider: "", level: "", deadline: "", eligibility: "", description: "", applyUrl: "", audience: DEFAULT_AUDIENCE.scholarship };
+const emptyGrant = { title: "", provider: "", amount: "", deadline: "", eligibility: "", description: "", applyUrl: "", audience: DEFAULT_AUDIENCE.grant };
+const audienceOf = (item: Partial<Audience>): Audience => ({ audienceCategories: item.audienceCategories ?? [], audienceSubcategories: item.audienceSubcategories ?? [] });
+/** Optional official link: empty is fine, otherwise it must be a full web address. */
+const validateLink = (value: string) => (!value.trim() || /^https?:\/\/\S+\.\S+/i.test(value.trim()) ? null : "Enter a full web address starting with https://, or leave it empty.");
 
 export default function AdminDashboard() {
   const app = useApp();
@@ -44,6 +50,8 @@ export default function AdminDashboard() {
   const [topics, setTopics] = useState<AdminTopic[]>([]);
   const [resources, setResources] = useState<AdminResource[]>([]);
   const [scholarships, setScholarships] = useState<AdminScholarship[]>([]);
+  const [grants, setGrants] = useState<AdminGrant[]>([]);
+  const [membershipCategories, setMembershipCategories] = useState<MembershipCategory[]>([]);
   const [serviceAreas, setServiceAreas] = useState<ServiceAreaRecord[]>([]);
   const [areaForm, setAreaForm] = useState(emptyArea);
   const [areaErrors, setAreaErrors] = useState<FormErrors>({});
@@ -86,6 +94,15 @@ export default function AdminDashboard() {
   const scholarshipUpload = useRef<{ uri: string; url: string } | null>(null);
   const scholarshipFormY = useRef(0);
 
+  // Grant form
+  const [grantForm, setGrantForm] = useState(emptyGrant);
+  const [grantErrors, setGrantErrors] = useState<FormErrors>({});
+  const [grantImage, setGrantImage] = useState<PickedImage | null>(null);
+  const [grantRemoveImage, setGrantRemoveImage] = useState(false);
+  const [editingGrant, setEditingGrant] = useState<AdminGrant | null>(null);
+  const grantUpload = useRef<{ uri: string; url: string } | null>(null);
+  const grantFormY = useRef(0);
+
   const [search, setSearch] = useState("");
   const searchTerm = useRef("");
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});
@@ -119,12 +136,15 @@ export default function AdminDashboard() {
   /* ---------------------------------------------------------------- data loading */
   const refresh = useCallback(async () => {
     setLoading(true);
-    const names = ["Dashboard", "Accounts", "Topics", "Resources", "Scholarships", "Service areas", "Ratings", "Unassigned discussions", "Appointments", "Audit trail"];
+    const names = ["Dashboard", "Accounts", "Topics", "Resources", "Scholarships", "Service areas", "Ratings", "Unassigned discussions", "Appointments", "Audit trail", "Grants", "Membership groups"];
     const results = await Promise.allSettled([
       apiAdminDashboard(), apiAdminUsers(searchTerm.current), apiAdminTopics(), apiAdminResources(), apiAdminScholarships(),
       apiAdminServiceAreas(), apiAdminPendingRatings(), apiAdminUnassignedDiscussions(), apiAdminAppointments(), apiAdminAuditLogs(),
+      apiAdminGrants(), apiGetMembershipCategories(),
     ]);
-    const [s, u, t, r, sc, a, pr, ud, ap, au] = results;
+    const [s, u, t, r, sc, a, pr, ud, ap, au, gr, mc] = results;
+    if (gr.status === "fulfilled") setGrants(gr.value as AdminGrant[]);
+    if (mc.status === "fulfilled") setMembershipCategories(mc.value as MembershipCategory[]);
     if (s.status === "fulfilled") setStats(s.value as AdminDashboardStats);
     if (u.status === "fulfilled") setUsers(u.value as AdminUser[]);
     if (t.status === "fulfilled") setTopics(t.value as AdminTopic[]);
@@ -320,7 +340,7 @@ export default function AdminDashboard() {
   const editResource = (item: AdminResource) => {
     if (anyBusy) return;
     setEditingResource(item);
-    setResourceForm({ title: item.title, category: item.category, minutes: minutesFromReadTime(item.readTime), description: item.description });
+    setResourceForm({ title: item.title, category: item.category, minutes: minutesFromReadTime(item.readTime), description: item.description, audience: audienceOf(item) });
     setResourceErrors({}); setResourceImage(null); setResourceRemoveImage(false); resourceUpload.current = null;
     scrollRef.current?.scrollTo({ y: Math.max(resourceFormY.current - 12, 0), animated: true });
     showToast("Editing loaded in the form above.");
@@ -338,7 +358,7 @@ export default function AdminDashboard() {
     setResourceErrors(errors);
     if (hasErrors(errors)) return showToast("Please fix the highlighted fields.", "error");
     const editing = editingResource;
-    const input = { title: resourceForm.title.trim(), category: resourceForm.category, readTime: readTimeLabel(resourceForm.minutes), description: resourceForm.description.trim() };
+    const input = { title: resourceForm.title.trim(), category: resourceForm.category, readTime: readTimeLabel(resourceForm.minutes), description: resourceForm.description.trim(), ...resourceForm.audience };
     const ok = await perform("resource-save", editing ? "Resource not updated" : "Resource not saved", async () => {
       let imageUrl: string | null | undefined;
       if (resourceImage) {
@@ -372,7 +392,7 @@ export default function AdminDashboard() {
   const editScholarship = (item: AdminScholarship) => {
     if (anyBusy) return;
     setEditingScholarship(item);
-    setScholarshipForm({ title: item.title, provider: item.provider, level: item.level, deadline: toDateString(new Date(item.deadline)), eligibility: item.eligibility, description: item.description });
+    setScholarshipForm({ title: item.title, provider: item.provider, level: item.level, deadline: toDateString(new Date(item.deadline)), eligibility: item.eligibility, description: item.description, applyUrl: item.applyUrl ?? "", audience: audienceOf(item) });
     setScholarshipErrors({}); setScholarshipImage(null); setScholarshipRemoveImage(false); scholarshipUpload.current = null;
     scrollRef.current?.scrollTo({ y: Math.max(scholarshipFormY.current - 12, 0), animated: true });
     showToast("Editing loaded in the form above.");
@@ -390,10 +410,11 @@ export default function AdminDashboard() {
       deadline: validateDateString(f.deadline, "Deadline", { min: unchangedDeadline ? undefined : today }),
       eligibility: validateLength(f.eligibility, "Eligibility", { min: 2, max: 2000 }),
       description: validateLength(f.description, "Description", { min: 2, max: 2000 }),
+      applyUrl: validateLink(f.applyUrl),
     };
     setScholarshipErrors(errors);
     if (hasErrors(errors)) return showToast("Please fix the highlighted fields.", "error");
-    const input = { title: f.title.trim(), provider: f.provider.trim(), level: f.level, deadline: unchangedDeadline && editing ? editing.deadline : endOfDayIso(f.deadline), eligibility: f.eligibility.trim(), description: f.description.trim() };
+    const input = { title: f.title.trim(), provider: f.provider.trim(), level: f.level, deadline: unchangedDeadline && editing ? editing.deadline : endOfDayIso(f.deadline), eligibility: f.eligibility.trim(), description: f.description.trim(), applyUrl: f.applyUrl.trim() || null, ...f.audience };
     const ok = await perform("scholarship-save", editing ? "Scholarship not updated" : "Scholarship not saved", async () => {
       let imageUrl: string | null | undefined;
       if (scholarshipImage) {
@@ -415,6 +436,65 @@ export default function AdminDashboard() {
     if (!(await confirmAction({ title: "Delete scholarship", message: `Permanently delete “${item.title}”${item.imageUrl ? " and its image" : ""}? This cannot be undone. Use Unpublish to hide it instead.`, confirmText: "Delete", destructive: true }))) return;
     const ok = await perform(`scholarship-del-${item.id}`, "Scholarship not deleted", () => apiAdminDeleteScholarship(item.id), { title: "Scholarship deleted", message: `“${item.title}” was removed.` });
     if (ok && editingScholarship?.id === item.id) resetScholarshipForm();
+  };
+
+  /* ---------------------------------------------------------------- grants */
+  const resetGrantForm = () => {
+    setGrantForm(emptyGrant); setGrantErrors({}); setGrantImage(null); setGrantRemoveImage(false);
+    setEditingGrant(null); grantUpload.current = null;
+  };
+
+  const editGrant = (item: AdminGrant) => {
+    if (anyBusy) return;
+    setEditingGrant(item);
+    setGrantForm({ title: item.title, provider: item.provider, amount: item.amount ?? "", deadline: item.deadline ? toDateString(new Date(item.deadline)) : "", eligibility: item.eligibility, description: item.description, applyUrl: item.applyUrl ?? "", audience: audienceOf(item) });
+    setGrantErrors({}); setGrantImage(null); setGrantRemoveImage(false); grantUpload.current = null;
+    scrollRef.current?.scrollTo({ y: Math.max(grantFormY.current - 12, 0), animated: true });
+    showToast("Editing loaded in the form above.");
+  };
+
+  const submitGrant = async () => {
+    const f = grantForm;
+    const editing = editingGrant;
+    // The deadline is optional (open all year). An already-passed deadline may stay while other details are corrected.
+    const unchangedDeadline = !!editing?.deadline && f.deadline === toDateString(new Date(editing.deadline));
+    const errors: FormErrors = {
+      title: validateLength(f.title, "Title", { min: 2, max: 180 }),
+      provider: validateLength(f.provider, "Provider", { min: 2, max: 180 }),
+      amount: validateLength(f.amount, "Amount", { max: 120, required: false }),
+      deadline: f.deadline ? validateDateString(f.deadline, "Deadline", { min: unchangedDeadline ? undefined : today }) : null,
+      eligibility: validateLength(f.eligibility, "Who can apply", { min: 2, max: 2000 }),
+      description: validateLength(f.description, "Description", { min: 2, max: 2000 }),
+      applyUrl: validateLink(f.applyUrl),
+    };
+    setGrantErrors(errors);
+    if (hasErrors(errors)) return showToast("Please fix the highlighted fields.", "error");
+    const input = {
+      title: f.title.trim(), provider: f.provider.trim(), amount: f.amount.trim() || null,
+      deadline: !f.deadline ? null : unchangedDeadline && editing?.deadline ? editing.deadline : endOfDayIso(f.deadline),
+      eligibility: f.eligibility.trim(), description: f.description.trim(), applyUrl: f.applyUrl.trim() || null, ...f.audience,
+    };
+    const ok = await perform("grant-save", editing ? "Grant not updated" : "Grant not saved", async () => {
+      let imageUrl: string | null | undefined;
+      if (grantImage) {
+        if (grantUpload.current?.uri !== grantImage.uri) grantUpload.current = { uri: grantImage.uri, url: (await apiAdminUploadContentImage(grantImage.uri)).imageUrl };
+        imageUrl = grantUpload.current.url;
+      } else if (editing && grantRemoveImage) imageUrl = null;
+      const payload = imageUrl === undefined ? input : { ...input, imageUrl };
+      return editing ? apiAdminUpdateGrant(editing.id, payload) : apiAdminCreateGrant(payload);
+    }, editing ? { title: "Grant updated", message: `“${input.title}” was saved.` } : { title: "Grant published", message: `“${input.title}” is now visible to ${audienceLabel(f.audience, membershipCategories).toLowerCase()} in Explore.` });
+    if (ok) resetGrantForm();
+  };
+
+  const toggleGrant = async (item: AdminGrant) => {
+    if (item.isActive && !(await confirmAction({ title: "Unpublish grant", message: `“${item.title}” will be hidden from members.`, confirmText: "Unpublish", destructive: true }))) return;
+    await perform(`grant-${item.id}`, "Grant update failed", () => apiAdminSetGrantActive(item.id, !item.isActive), { title: "", message: `“${item.title}” ${item.isActive ? "unpublished" : "published"}.`, toast: true });
+  };
+
+  const deleteGrant = async (item: AdminGrant) => {
+    if (!(await confirmAction({ title: "Delete grant", message: `Permanently delete “${item.title}”${item.imageUrl ? " and its image" : ""}? This cannot be undone. Use Unpublish to hide it instead.`, confirmText: "Delete", destructive: true }))) return;
+    const ok = await perform(`grant-del-${item.id}`, "Grant not deleted", () => apiAdminDeleteGrant(item.id), { title: "Grant deleted", message: `“${item.title}” was removed.` });
+    if (ok && editingGrant?.id === item.id) resetGrantForm();
   };
 
   /* ---------------------------------------------------------------- moderation */
@@ -444,12 +524,13 @@ export default function AdminDashboard() {
       <Text style={{ color: colors.muted, fontSize: 12, lineHeight: 18 }}>{sub}</Text>
     </>
   );
-  const itemHeader = (name: string, meta: string, active: boolean, imageUrl: string | null, activeLabel: string, inactiveLabel: string, icon: "book-outline" | "school-outline") => (
+  const itemHeader = (name: string, meta: string, active: boolean, imageUrl: string | null, activeLabel: string, inactiveLabel: string, icon: "book-outline" | "school-outline" | "cash-outline", audience?: string) => (
     <Row style={{ alignItems: "flex-start", gap: 12 }}>
       <View style={{ width: 84 }}><SmartImage uri={imageUrl} aspectRatio={1} radius={14} fallbackIcon={icon} accessibilityLabel={imageUrl ? `Image for ${name}` : undefined} /></View>
       <View style={{ flex: 1, gap: 5 }}>
         <Text style={{ color: colors.ink, fontWeight: "800" }}>{name}</Text>
         <Text style={{ color: colors.muted, fontSize: 12, lineHeight: 17 }}>{meta}</Text>
+        {audience ? <Text style={{ color: colors.primaryDark, fontSize: 12, lineHeight: 17, fontWeight: "700" }}>For: {audience}</Text> : null}
         <Pill label={active ? activeLabel : inactiveLabel} tone={active ? "green" : "red"} />
       </View>
     </Row>
@@ -466,6 +547,7 @@ export default function AdminDashboard() {
     { key: "counselling", label: "Counselling", count: attention },
     { key: "resources", label: "Resources" },
     { key: "scholarships", label: "Scholarships" },
+    { key: "grants", label: "Grants" },
     { key: "platform", label: "Platform" },
   ];
   const statTiles: { label: string; value: number; icon: IconName; tone?: "brand" | "green" | "amber" | "red" | "neutral"; highlight?: boolean }[] = stats ? [
@@ -479,6 +561,7 @@ export default function AdminDashboard() {
     { label: "Ratings to review", value: stats.pendingRatings, icon: "star-half-outline", tone: "amber", highlight: stats.pendingRatings > 0 },
     { label: "Published resources", value: stats.resources, icon: "book-outline" },
     { label: "Published scholarships", value: stats.scholarships, icon: "school-outline" },
+    { label: "Published grants", value: stats.grants ?? grants.filter((g) => g.isActive).length, icon: "cash-outline" },
   ] : [];
 
   if (app.sessionLoading || !isAdminRole) return <Screen><LoadingBlock label="Opening administration…" /></Screen>;
@@ -699,6 +782,7 @@ export default function AdminDashboard() {
             <SelectField label="Category" value={resourceForm.category} options={categoryOptions} onChange={(v) => { setResourceForm((f) => ({ ...f, category: v })); setResourceErrors((e) => ({ ...e, category: null })); }} placeholder="Select a category" required error={resourceErrors.category} disabled={anyBusy} />
             <Field label="Reading time (minutes)" value={resourceForm.minutes} onChangeText={(v) => setResourceForm((f) => ({ ...f, minutes: digitsOnly(v).slice(0, 3) }))} placeholder="5" keyboardType="number-pad" required helper={`Whole minutes, ${READ_MINUTES_MIN}–${READ_MINUTES_MAX}.`} error={resourceErrors.minutes} editable={!anyBusy} />
             <Field label="Description" value={resourceForm.description} onChangeText={(v) => setResourceForm((f) => ({ ...f, description: v }))} placeholder="Resource summary" multiline required maxLength={2000} error={resourceErrors.description} editable={!anyBusy} />
+            <AudienceField value={resourceForm.audience} onChange={(audience) => setResourceForm((f) => ({ ...f, audience }))} categories={membershipCategories} suggested={DEFAULT_AUDIENCE.resource} loading={loading} disabled={anyBusy} />
             <ImageUploadField label="Cover image" picked={resourceImage} existingUrl={editingResource?.imageUrl} existingRemoved={resourceRemoveImage} onPick={(image) => { setResourceImage(image); setResourceRemoveImage(false); }} onRemove={() => { if (resourceImage) setResourceImage(null); else setResourceRemoveImage(true); }} disabled={anyBusy} />
             <Button title={isBusy("resource-save") ? (resourceImage ? "Uploading and saving…" : "Saving…") : editingResource ? "Save changes" : "Publish resource"} loading={isBusy("resource-save")} disabled={anyBusy} onPress={() => void submitResource()} />
             {editingResource ? <Button title="Cancel editing" variant="ghost" disabled={anyBusy} onPress={resetResourceForm} /> : null}
@@ -706,7 +790,7 @@ export default function AdminDashboard() {
         </View>
         {visibleItems("resources", resources).map((item) => (
           <Card key={item.id} style={adminCardStyle}>
-            {itemHeader(item.title, `${item.category} · ${item.readTime}`, item.isActive, item.imageUrl, "Published", "Unpublished", "book-outline")}
+            {itemHeader(item.title, `${item.category} · ${item.readTime}`, item.isActive, item.imageUrl, "Published", "Unpublished", "book-outline", audienceLabel(audienceOf(item), membershipCategories))}
             <Row style={{ flexWrap: "wrap", gap: 8 }}>
               <Button size="sm" title="Edit" variant="secondary" disabled={anyBusy} onPress={() => editResource(item)} />
               <Button size="sm" title={item.isActive ? "Unpublish" : "Publish"} variant="secondary" loading={isBusy(`resource-${item.id}`)} disabled={anyBusy} onPress={() => void toggleResource(item)} />
@@ -731,6 +815,8 @@ export default function AdminDashboard() {
             <DatePickerField label="Application deadline" value={scholarshipForm.deadline} onChange={(v) => { setScholarshipForm((f) => ({ ...f, deadline: v })); setScholarshipErrors((e) => ({ ...e, deadline: null })); }} minDate={editingScholarship && scholarshipForm.deadline === toDateString(new Date(editingScholarship.deadline)) ? undefined : today} maxDate={`${new Date().getFullYear() + 10}-12-31`} required error={scholarshipErrors.deadline} disabled={anyBusy} helper={scholarshipForm.deadline ? `Closes at the end of ${formatDisplayDate(scholarshipForm.deadline)}.` : undefined} />
             <Field label="Eligibility" value={scholarshipForm.eligibility} onChangeText={(v) => setScholarshipForm((f) => ({ ...f, eligibility: v }))} placeholder="Eligibility requirements" multiline required maxLength={2000} error={scholarshipErrors.eligibility} editable={!anyBusy} />
             <Field label="Description" value={scholarshipForm.description} onChangeText={(v) => setScholarshipForm((f) => ({ ...f, description: v }))} placeholder="Opportunity details" multiline required maxLength={2000} error={scholarshipErrors.description} editable={!anyBusy} />
+            <Field label="Official link" optional value={scholarshipForm.applyUrl} onChangeText={(v) => { setScholarshipForm((f) => ({ ...f, applyUrl: v })); setScholarshipErrors((e) => ({ ...e, applyUrl: null })); }} placeholder="https://…" keyboardType="url" autoCapitalize="none" autoCorrect={false} maxLength={2048} helper="Where members can read more or apply. Shown as an Apply button." error={scholarshipErrors.applyUrl} editable={!anyBusy} />
+            <AudienceField value={scholarshipForm.audience} onChange={(audience) => setScholarshipForm((f) => ({ ...f, audience }))} categories={membershipCategories} suggested={DEFAULT_AUDIENCE.scholarship} loading={loading} disabled={anyBusy} />
             <ImageUploadField label="Scholarship image" picked={scholarshipImage} existingUrl={editingScholarship?.imageUrl} existingRemoved={scholarshipRemoveImage} onPick={(image) => { setScholarshipImage(image); setScholarshipRemoveImage(false); }} onRemove={() => { if (scholarshipImage) setScholarshipImage(null); else setScholarshipRemoveImage(true); }} disabled={anyBusy} />
             <Button title={isBusy("scholarship-save") ? (scholarshipImage ? "Uploading and saving…" : "Saving…") : editingScholarship ? "Save changes" : "Publish scholarship"} loading={isBusy("scholarship-save")} disabled={anyBusy} onPress={() => void submitScholarship()} />
             {editingScholarship ? <Button title="Cancel editing" variant="ghost" disabled={anyBusy} onPress={resetScholarshipForm} /> : null}
@@ -738,7 +824,7 @@ export default function AdminDashboard() {
         </View>
         {visibleItems("scholarships", scholarships).map((item) => (
           <Card key={item.id} style={adminCardStyle}>
-            {itemHeader(item.title, `${item.provider} · ${item.level} · Deadline ${formatDisplayDate(item.deadline)}`, item.isActive, item.imageUrl, "Published", "Unpublished", "school-outline")}
+            {itemHeader(item.title, `${item.provider} · ${item.level} · Deadline ${formatDisplayDate(item.deadline)}`, item.isActive, item.imageUrl, "Published", "Unpublished", "school-outline", audienceLabel(audienceOf(item), membershipCategories))}
             <Row style={{ flexWrap: "wrap", gap: 8 }}>
               <Button size="sm" title="Edit" variant="secondary" disabled={anyBusy} onPress={() => editScholarship(item)} />
               <Button size="sm" title={item.isActive ? "Unpublish" : "Publish"} variant="secondary" loading={isBusy(`scholarship-${item.id}`)} disabled={anyBusy} onPress={() => void toggleScholarship(item)} />
@@ -748,6 +834,41 @@ export default function AdminDashboard() {
         ))}
         {renderSectionToggle("scholarships", scholarships.length)}
         {!scholarships.length && !loading ? emptyCard("No scholarships yet. Use the form above to publish the first one.") : null}
+
+        </> : null}
+
+        {section === "grants" ? <>
+        {/* ------------------------------------------------ grants */}
+        {h("Grant management", `Publish grants for working members and choose exactly who sees each one · ${grants.length} listings.`)}
+        <View onLayout={keepY(grantFormY)}>
+          <Card style={adminCardStyle}>
+            {title(editingGrant ? "Edit grant" : "Create a grant listing", editingGrant ? `Editing “${editingGrant.title}”.` : "Publish a grant with clear eligibility and, if it has one, a closing date. Fields marked * are required.")}
+            <Field label="Grant title" value={grantForm.title} onChangeText={(v) => setGrantForm((f) => ({ ...f, title: v }))} placeholder="Title" required maxLength={180} error={grantErrors.title} editable={!anyBusy} />
+            <Field label="Provider" value={grantForm.provider} onChangeText={(v) => setGrantForm((f) => ({ ...f, provider: v }))} placeholder="Organisation offering the grant" required maxLength={180} error={grantErrors.provider} editable={!anyBusy} />
+            <Field label="Amount" optional value={grantForm.amount} onChangeText={(v) => setGrantForm((f) => ({ ...f, amount: v }))} placeholder="e.g. Up to ₦500,000" maxLength={120} error={grantErrors.amount} editable={!anyBusy} />
+            <DatePickerField label="Application deadline" optional value={grantForm.deadline} onChange={(v) => { setGrantForm((f) => ({ ...f, deadline: v })); setGrantErrors((e) => ({ ...e, deadline: null })); }} minDate={editingGrant?.deadline && grantForm.deadline === toDateString(new Date(editingGrant.deadline)) ? undefined : today} maxDate={`${new Date().getFullYear() + 10}-12-31`} error={grantErrors.deadline} disabled={anyBusy} helper={grantForm.deadline ? `Closes at the end of ${formatDisplayDate(grantForm.deadline)}.` : "Leave empty for a grant that is open all year."} />
+            {grantForm.deadline ? <Button title="Remove deadline (open all year)" variant="ghost" size="sm" disabled={anyBusy} onPress={() => setGrantForm((f) => ({ ...f, deadline: "" }))} /> : null}
+            <Field label="Who can apply" value={grantForm.eligibility} onChangeText={(v) => setGrantForm((f) => ({ ...f, eligibility: v }))} placeholder="Eligibility requirements" multiline required maxLength={2000} error={grantErrors.eligibility} editable={!anyBusy} />
+            <Field label="Description" value={grantForm.description} onChangeText={(v) => setGrantForm((f) => ({ ...f, description: v }))} placeholder="What the grant pays for and how to apply" multiline required maxLength={2000} error={grantErrors.description} editable={!anyBusy} />
+            <Field label="Official link" optional value={grantForm.applyUrl} onChangeText={(v) => { setGrantForm((f) => ({ ...f, applyUrl: v })); setGrantErrors((e) => ({ ...e, applyUrl: null })); }} placeholder="https://…" keyboardType="url" autoCapitalize="none" autoCorrect={false} maxLength={2048} helper="Where members can read more or apply. Shown as an Apply button." error={grantErrors.applyUrl} editable={!anyBusy} />
+            <AudienceField value={grantForm.audience} onChange={(audience) => setGrantForm((f) => ({ ...f, audience }))} categories={membershipCategories} suggested={DEFAULT_AUDIENCE.grant} loading={loading} disabled={anyBusy} />
+            <ImageUploadField label="Grant image" picked={grantImage} existingUrl={editingGrant?.imageUrl} existingRemoved={grantRemoveImage} onPick={(image) => { setGrantImage(image); setGrantRemoveImage(false); }} onRemove={() => { if (grantImage) setGrantImage(null); else setGrantRemoveImage(true); }} disabled={anyBusy} />
+            <Button title={isBusy("grant-save") ? (grantImage ? "Uploading and saving…" : "Saving…") : editingGrant ? "Save changes" : "Publish grant"} loading={isBusy("grant-save")} disabled={anyBusy} onPress={() => void submitGrant()} />
+            {editingGrant ? <Button title="Cancel editing" variant="ghost" disabled={anyBusy} onPress={resetGrantForm} /> : null}
+          </Card>
+        </View>
+        {visibleItems("grants", grants).map((item) => (
+          <Card key={item.id} style={adminCardStyle}>
+            {itemHeader(item.title, `${item.provider}${item.amount ? ` · ${item.amount}` : ""} · ${item.deadline ? `Deadline ${formatDisplayDate(item.deadline)}` : "Open all year"}`, item.isActive, item.imageUrl, "Published", "Unpublished", "cash-outline", audienceLabel(audienceOf(item), membershipCategories))}
+            <Row style={{ flexWrap: "wrap", gap: 8 }}>
+              <Button size="sm" title="Edit" variant="secondary" disabled={anyBusy} onPress={() => editGrant(item)} />
+              <Button size="sm" title={item.isActive ? "Unpublish" : "Publish"} variant="secondary" loading={isBusy(`grant-${item.id}`)} disabled={anyBusy} onPress={() => void toggleGrant(item)} />
+              <Button size="sm" title="Delete" variant="danger" loading={isBusy(`grant-del-${item.id}`)} disabled={anyBusy} onPress={() => void deleteGrant(item)} />
+            </Row>
+          </Card>
+        ))}
+        {renderSectionToggle("grants", grants.length)}
+        {!grants.length && !loading ? emptyCard("No grants yet. Use the form above to publish the first one.") : null}
 
         </> : null}
 

@@ -18,3 +18,10 @@ export function leaveScreen(role?: string | null) {
   if (router.canGoBack()) router.back();
   else router.replace(role ? homeHrefFor(role) : "/");
 }
+
+export type ContentKind = "resource" | "scholarship" | "grant";
+
+/** Opens the full page for a resource, scholarship or grant. */
+export function openContent(kind: ContentKind, id: string) {
+  router.push({ pathname: "/content/[kind]/[id]", params: { kind, id } });
+}

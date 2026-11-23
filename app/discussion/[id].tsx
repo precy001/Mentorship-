@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { Alert, KeyboardAvoidingView, Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { Alert, AppState, KeyboardAvoidingView, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { router, useLocalSearchParams } from "expo-router";
+import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { Screen, Heading, Card, Button, Field, Pill, BackLink, LoadingBlock, EmptyState, StarRating, KEYBOARD_BEHAVIOR } from "@/src/components/UI";
 import { colors } from "@/src/lib/theme";
 import { discussionIsClosed, discussionTone, formatDateTime, humanize, pluralize } from "@/src/lib/format";
@@ -38,6 +38,28 @@ export default function DiscussionDetail() {
     finally { setLoading(false); }
   }, [id, app.user?.role]);
   useEffect(() => { void refresh(); }, [refresh]);
+
+  // New replies appear on their own: a quiet check every 15 seconds while this conversation is on screen,
+  // and again as soon as the app comes back to the foreground. Errors here are ignored (the next check retries).
+  const POLL_MS = 15_000;
+  const poll = useCallback(async () => {
+    try {
+      const latest = await apiGetDiscussion(String(id));
+      setDiscussion(current => {
+        if (!current) return latest;
+        const lastOld = current.messages[current.messages.length - 1]?.id;
+        const lastNew = latest.messages[latest.messages.length - 1]?.id;
+        return lastOld === lastNew && current.status === latest.status && current.messages.length === latest.messages.length ? current : latest;
+      });
+    } catch { /* quiet */ }
+  }, [id]);
+  useFocusEffect(useCallback(() => {
+    const timer = setInterval(() => { if (AppState.currentState === "active") void poll(); }, POLL_MS);
+    const subscription = AppState.addEventListener("change", state => { if (state === "active") void poll(); });
+    return () => { clearInterval(timer); subscription.remove(); };
+  }, [poll]));
+  const [pulling, setPulling] = useState(false);
+  const onPull = async () => { setPulling(true); try { await poll(); } finally { setPulling(false); } };
 
   // Keep the newest message in view when the conversation loads or grows.
   const messageCount = discussion?.messages.length ?? 0;
@@ -79,7 +101,7 @@ export default function DiscussionDetail() {
   const canSend = !!message.trim() && !sending;
 
   return <KeyboardAvoidingView style={{ flex: 1, backgroundColor: colors.bg }} behavior={KEYBOARD_BEHAVIOR}>
-    <Screen scrollRef={scrollRef} style={{ gap: 14 }}>
+    <Screen scrollRef={scrollRef} style={{ gap: 14 }} onRefresh={onPull} refreshing={pulling}>
       <BackLink />
       <Heading title={discussion.title} subtitle={`${discussion.topic.name} · ${pluralize(discussion.messages.length, "message")}`} />
       <Card style={{ gap: 12 }}>

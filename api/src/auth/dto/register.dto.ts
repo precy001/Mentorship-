@@ -1,4 +1,5 @@
 import { IsDateString, IsEmail, IsOptional, IsString, Matches, MaxLength, MinLength } from 'class-validator';
+import { NIN_MESSAGE, NIN_PATTERN, NormalizeNin } from '../../common/nin';
 
 export class RegisterDto {
   @IsEmail() @MaxLength(320) email!: string;
@@ -12,4 +13,6 @@ export class RegisterDto {
   @IsString({ message: 'Choose your LGA.' }) @MinLength(1, { message: 'Choose your LGA.' }) @MaxLength(100) lga!: string;
   @IsString({ message: 'Choose your LCDA.' }) @MinLength(1, { message: 'Choose your LCDA.' }) @MaxLength(120) lcda!: string;
   @IsOptional() @IsString() @MaxLength(180) school?: string;
+  /** Required. Stored with the profile; not verified against NIMC. */
+  @NormalizeNin() @IsString({ message: NIN_MESSAGE }) @Matches(NIN_PATTERN, { message: NIN_MESSAGE }) nin!: string;
 }
