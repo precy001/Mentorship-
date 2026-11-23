@@ -64,6 +64,19 @@ export function withMessage<T extends MessageLike>(messages: T[], message: T): T
   return [...messages, message].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
 }
 
+/**
+ * Combines a fresh copy of the conversation from the server with what is on screen. The server's copy wins for
+ * every message it has (it carries the latest receipts). A message on screen that the server's copy lacks is
+ * kept: that copy was requested before the message was saved (a check that crossed paths with a send), and
+ * messages are never deleted, so dropping it would only make it flicker out until the next check.
+ */
+export function mergeMessages<T extends MessageLike>(onScreen: T[], fromServer: T[]): T[] {
+  const known = new Set(fromServer.map((message) => message.id));
+  const keep = onScreen.filter((message) => !known.has(message.id));
+  if (!keep.length) return fromServer;
+  return [...fromServer, ...keep].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+}
+
 /** Marks messages as seen locally right after telling the server, so the next check does not ask again. */
 export function markedSeen<T extends MessageLike>(messages: T[], ids: Set<string>, at: string): T[] {
   return messages.map((message) => (ids.has(message.id) ? { ...message, readAt: message.readAt ?? at, deliveredAt: message.deliveredAt ?? at } : message));

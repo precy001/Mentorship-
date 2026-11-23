@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { restartingPlayer, type PlayerLike } from "./soundPlayer";
 
 /**
  * Conversation sounds: a short "drop" when your message is sent, and a softer pop when a reply arrives while the
@@ -16,7 +17,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 
 export type SoundName = "sent" | "received";
 
-type Player = { play(): void; seekTo(seconds: number): Promise<void>; volume: number };
+type Player = { play(): Promise<void> };
 
 const PREFERENCE_KEY = "mentorship.conversationSounds";
 
@@ -37,7 +38,8 @@ function load(): Record<SoundName, Player> | null {
     const sent = audio.createAudioPlayer(require("../../assets/sounds/message-sent.wav"));
     const received = audio.createAudioPlayer(require("../../assets/sounds/message-received.wav"));
     received.volume = 0.8;
-    players = { sent, received };
+    // Each play starts from the beginning (see soundPlayer.ts: without this, every second sound was silent).
+    players = { sent: restartingPlayer(sent as unknown as PlayerLike), received: restartingPlayer(received as unknown as PlayerLike) };
   } catch {
     players = null; // this app build has no audio module: stay silent
   }
@@ -49,11 +51,7 @@ export function playSound(name: SoundName): void {
   if (!enabled) return;
   const player = load()?.[name];
   if (!player) return;
-  try {
-    // Rewind first so quick messages each get their own sound.
-    void player.seekTo(0).catch(() => {});
-    player.play();
-  } catch { /* a sound is never worth an error */ }
+  void player.play().catch(() => { /* a sound is never worth an error */ });
 }
 
 /** Loads the sounds ahead of time (e.g. when a conversation opens) so the first one plays without delay. */

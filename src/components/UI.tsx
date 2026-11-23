@@ -33,6 +33,7 @@ export function Screen({
   tabBar = false,
   onRefresh,
   refreshing = false,
+  dockedFooter = false,
 }: {
   children: React.ReactNode;
   scroll?: boolean;
@@ -46,12 +47,18 @@ export function Screen({
   /** Adds pull-to-refresh. */
   onRefresh?: () => void | Promise<unknown>;
   refreshing?: boolean;
+  /**
+   * A bar is docked under this screen (a message composer) inside a KeyboardAvoidingView. That parent already
+   * moves everything above the keyboard and the bar covers the bottom safe area, so the scroll area must not add
+   * the keyboard height again (doing both left a keyboard-sized empty gap above the bar on iPhone).
+   */
+  dockedFooter?: boolean;
 }) {
   const insets = useSafeAreaInsets();
   const padding = {
     paddingTop: (safeTop ? insets.top : 0) + spacing.lg,
     // Tab screens end at the top of the docked tab bar, which already accounts for the bottom inset.
-    paddingBottom: tabBar ? 32 : 40 + insets.bottom,
+    paddingBottom: dockedFooter ? spacing.md : tabBar ? 32 : 40 + insets.bottom,
   };
   return scroll ? (
     <ScrollView
@@ -60,7 +67,7 @@ export function Screen({
       contentContainerStyle={[styles.screen, padding, style]}
       keyboardShouldPersistTaps="handled"
       keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
-      automaticallyAdjustKeyboardInsets
+      automaticallyAdjustKeyboardInsets={!dockedFooter}
       showsVerticalScrollIndicator={false}
       refreshControl={
         onRefresh ? (

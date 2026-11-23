@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  conversationSignature, makeClientId, markedSeen, newIncoming, nextPollDelay, POLL_ACTIVE_MS, POLL_IDLE_MS,
+  conversationSignature, makeClientId, markedSeen, mergeMessages, newIncoming, nextPollDelay, POLL_ACTIVE_MS, POLL_IDLE_MS,
   receiptFor, sideOf, stillPending, unseenFromOtherSide, withMessage,
 } from "./receipts.ts";
 
@@ -69,4 +69,14 @@ test("checks are quicker right after activity", () => {
   const now = 1_000_000;
   assert.equal(nextPollDelay(now - 10_000, now), POLL_ACTIVE_MS);
   assert.equal(nextPollDelay(now - 10 * 60_000, now), POLL_IDLE_MS);
+});
+
+test("a check that crossed paths with a send never hides the sent message", () => {
+  const onScreen = [msg("1", "m"), msg("2", "c"), msg("3", "m")]; // 3 was just sent
+  const staleServerCopy = [msg("1", "m", { readAt: "t" }), msg("2", "c")]; // requested before 3 was saved
+  const merged = mergeMessages(onScreen, staleServerCopy);
+  assert.deepEqual(merged.map((m) => m.id), ["1", "2", "3"]);
+  assert.equal(merged[0].readAt, "t"); // the server's receipts still win
+  const fresh = [msg("1", "m"), msg("2", "c"), msg("3", "m", { deliveredAt: "t" })];
+  assert.equal(mergeMessages(onScreen, fresh), fresh);
 });

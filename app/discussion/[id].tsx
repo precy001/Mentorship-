@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { AppState, KeyboardAvoidingView, Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { AppState, Keyboard, KeyboardAvoidingView, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { AppAlert } from "@/src/lib/alert";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -10,7 +10,7 @@ import { discussionIsClosed, discussionTone, formatDateTime, formatTime, humaniz
 import { useApp } from "@/src/context/AppContext";
 import { ApiError, apiGetDiscussion, apiMarkDiscussionRead, apiSendDiscussionMessage, apiSetDiscussionStatus, apiCreateRating, DiscussionMessage, DiscussionRecord, apiMyRatings, MyRating } from "@/src/lib/api";
 import {
-  conversationSignature, makeClientId, markedSeen, newIncoming, nextPollDelay, PendingMessage, Receipt, RECEIPT_LABEL,
+  conversationSignature, makeClientId, markedSeen, mergeMessages, newIncoming, nextPollDelay, PendingMessage, Receipt, RECEIPT_LABEL,
   receiptFor, stillPending, unseenFromOtherSide, withMessage,
 } from "@/src/lib/receipts";
 import { playSound, preloadSounds, useConversationSounds } from "@/src/lib/sounds";
@@ -108,8 +108,13 @@ export default function DiscussionDetail() {
         lastActivity.current = Date.now();
         playSound("received");
       }
-      setDiscussion(current => (!current || conversationSignature(current.status, current.messages) !== conversationSignature(latest.status, latest.messages) ? latest : current));
+      setDiscussion(current => {
+        if (!current) return latest;
+        const merged = { ...latest, messages: mergeMessages(current.messages, latest.messages) };
+        return conversationSignature(current.status, current.messages) !== conversationSignature(merged.status, merged.messages) ? merged : current;
+      });
       setPending(current => stillPending(current, latest.messages));
+      // Only the other side's messages matter for "seen", and the server's copy has all of those.
       void acknowledgeSeen(latest);
     } catch { /* quiet */ }
   }, [id, me, acknowledgeSeen]);
@@ -135,6 +140,11 @@ export default function DiscussionDetail() {
     const timer = setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 120);
     return () => clearTimeout(timer);
   }, [messageCount]);
+  // When the keyboard opens, the conversation gets shorter: keep the newest message just above the message box.
+  useEffect(() => {
+    const subscription = Keyboard.addListener("keyboardDidShow", () => scrollRef.current?.scrollToEnd({ animated: true }));
+    return () => subscription.remove();
+  }, []);
 
   /**
    * Sending, WhatsApp style: the message appears at once with a clock, the box clears, and you can keep typing.
@@ -209,7 +219,7 @@ export default function DiscussionDetail() {
   const canSend = !!message.trim();
 
   return <KeyboardAvoidingView style={{ flex: 1, backgroundColor: colors.bg }} behavior={KEYBOARD_BEHAVIOR}>
-    <Screen scrollRef={scrollRef} style={{ gap: 14 }} onRefresh={onPull} refreshing={pulling}>
+    <Screen scrollRef={scrollRef} style={{ gap: 14 }} onRefresh={onPull} refreshing={pulling} dockedFooter={!closed}>
       <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
         <BackLink />
         <Pressable
