@@ -173,7 +173,7 @@ export default function Profile() {
         <ListRow icon="help-circle-outline" title="Help & frequently asked questions" last onPress={() => router.push({ pathname: "/feature/[slug]", params: { slug: "help" } })} />
       </ListGroup>
 
-      <Button title="Log out" icon="log-out-outline" variant="dangerSoft" onPress={() => Alert.alert("Log out?", "You will be signed out of your account on this device.", [{ text: "Cancel", style: "cancel" }, { text: "Log out", style: "destructive", onPress: async () => { await app.logout(); router.replace({ pathname: "/auth", params: { mode: "signin", signedOut: "1" } }); } }])} />
+      <Button title="Log out" icon="log-out-outline" variant="dangerSoft" onPress={() => Alert.alert("Log out?", "You will be signed out of your account on this device.", [{ text: "Cancel", style: "cancel" }, { text: "Log out", style: "destructive", onPress: async () => { await app.logout(); /* returns to sign-in automatically (app/_layout.tsx) */ } }])} />
     </Screen>
   );
 }

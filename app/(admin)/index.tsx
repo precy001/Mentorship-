@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Alert, LayoutChangeEvent, Pressable, ScrollView, Text, View } from "react-native";
-import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Screen, Card, Button, Field, Pill, Row, SectionHeader, StatTile, Chip, EmptyState, Avatar, LoadingBlock, IconBadge } from "@/src/components/UI";
 import type { IconName } from "@/src/components/UI";
@@ -114,12 +113,8 @@ export default function AdminDashboard() {
   const emptyCard = (text: string) => <EmptyState icon="file-tray-outline" title={text} />;
 
   /* ---------------------------------------------------------------- access control */
-  useEffect(() => {
-    if (app.sessionLoading) return;
-    if (!app.user) router.replace({ pathname: "/auth", params: { mode: "signin" } });
-    else if (app.user.role === "counsellor") router.replace("/(counsellor)");
-    else if (!isAdminRole) router.replace("/(student)");
-  }, [app.sessionLoading, app.user, isAdminRole]);
+  // Only admins can reach this screen: the root layout guards it (app/_layout.tsx) and moves people to the
+  // right place when they sign in or out. Redirecting from here as well made the dashboard open twice.
 
   /* ---------------------------------------------------------------- data loading */
   const refresh = useCallback(async () => {
@@ -173,7 +168,8 @@ export default function AdminDashboard() {
     } catch (error) {
       if (isSessionExpired(error)) {
         Alert.alert("Session expired", "Please sign in again to continue.", [
-          { text: "Sign in", onPress: async () => { await app.logout(); router.replace({ pathname: "/auth", params: { mode: "signin", signedOut: "1" } }); } },
+          // Signing out returns to the sign-in screen automatically (see app/_layout.tsx).
+          { text: "Sign in", onPress: async () => { await app.logout(); } },
         ]);
       } else {
         Alert.alert(errorTitle, errorMessage(error));
@@ -433,7 +429,8 @@ export default function AdminDashboard() {
   const signOut = () =>
     Alert.alert("Sign out?", "Return to sign in?", [
       { text: "Cancel", style: "cancel" },
-      { text: "Sign out", onPress: async () => { await app.logout(); router.replace({ pathname: "/auth", params: { mode: "signin", signedOut: "1" } }); } },
+      // Signing out returns to the sign-in screen automatically (see app/_layout.tsx).
+      { text: "Sign out", onPress: async () => { await app.logout(); } },
     ]);
 
   const keepY = (target: React.MutableRefObject<number>) => (event: LayoutChangeEvent) => { target.current = event.nativeEvent.layout.y; };

@@ -1,7 +1,7 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { Image, Modal, Pressable, ScrollView, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { router } from "expo-router";
+import { router, useSegments } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useApp } from "@/src/context/AppContext";
 import { colors } from "@/src/lib/theme";
@@ -32,9 +32,19 @@ const ADMIN_STEPS: Step[] = [
 export function WelcomeGate() {
   const app = useApp();
   const insets = useSafeAreaInsets();
+  const segments = useSegments();
   const user = app.user;
-  const visible = !!user && !user.welcomeSeenAt;
-  if (!visible || !user) return null;
+  // Only once the person is on their own dashboard, and only after the sign-in transition has finished.
+  // Opening this sheet in the middle of the sign-in transition (over the sign-in screen) is avoided.
+  const onDashboard = segments[0] === "(student)" || segments[0] === "(counsellor)" || segments[0] === "(admin)";
+  const wanted = !!user && !user.welcomeSeenAt && onDashboard;
+  const [settled, setSettled] = useState(false);
+  useEffect(() => {
+    if (!wanted) { setSettled(false); return; }
+    const timer = setTimeout(() => setSettled(true), 700);
+    return () => clearTimeout(timer);
+  }, [wanted, user?.id]);
+  if (!wanted || !settled || !user) return null;
 
   const first = user.name.split(" ")[0] || "there";
   const isMember = user.role === "member" || user.role === "student";

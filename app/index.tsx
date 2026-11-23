@@ -22,21 +22,14 @@ const CHIPS: { icon: IconName; label: string; tint: string; color: string }[] = 
 ];
 
 /**
- * Splash / welcome screen. It never blocks: the session check runs in parallel, signed-in people are sent
- * straight to their dashboard, and everyone else can tap a button the moment the screen appears.
+ * Splash / welcome screen. It never blocks: the session check runs in parallel and everyone else can tap a
+ * button the moment the screen appears. When a saved session is restored, the root layout swaps this screen
+ * for the person's dashboard (see app/_layout.tsx), so this screen does not navigate on its own.
  */
 export default function Welcome() {
   const app = useApp();
   const insets = useSafeAreaInsets();
   const { height } = useWindowDimensions();
-
-  // Session restoration and routing: unchanged behaviour.
-  useEffect(() => {
-    if (app.sessionLoading || !app.user) return;
-    if (app.user.role === "admin" || app.user.role === "super_admin") router.replace("/(admin)");
-    else if (app.user.role === "counsellor") router.replace("/(counsellor)");
-    else router.replace("/(student)");
-  }, [app.sessionLoading, app.user]);
 
   const restoring = app.sessionLoading || !!app.user;
   const compact = height < 700;

@@ -5,6 +5,8 @@ import { router, useLocalSearchParams } from "expo-router";
 import { Screen, Heading, Card, Button, Field, BackLink, IconBadge } from "@/src/components/UI";
 import { colors } from "@/src/lib/theme";
 import { apiResetPassword } from "@/src/lib/api";
+import { useApp } from "@/src/context/AppContext";
+import { homeHrefFor } from "@/src/lib/routes";
 
 export default function ResetPassword() {
   const params = useLocalSearchParams<{ token?: string }>();
@@ -13,6 +15,9 @@ export default function ResetPassword() {
   const [confirm, setConfirm] = useState("");
   const [errors, setErrors] = useState<{ password?: string | null; confirm?: string | null }>({});
   const [busy, setBusy] = useState(false);
+  const app = useApp();
+  // The sign-in screen only exists while signed out (app/_layout.tsx); a signed-in person goes back to their home.
+  const goToSignIn = () => router.replace(app.user ? homeHrefFor(app.user.role) : "/auth?mode=signin");
 
   const submit = async () => {
     if (!token) {
@@ -36,7 +41,7 @@ export default function ResetPassword() {
     try {
       const result = await apiResetPassword(token, password);
       Alert.alert("Password updated", result.message, [
-        { text: "Continue", onPress: () => router.replace("/auth?mode=signin") },
+        { text: "Continue", onPress: goToSignIn },
       ]);
     } catch (error) {
       Alert.alert("Unable to reset password", error instanceof Error ? error.message : "Request a new reset link and try again.");
@@ -47,7 +52,7 @@ export default function ResetPassword() {
 
   return (
     <Screen>
-      <BackLink label="Back to sign in" onPress={() => router.replace("/auth?mode=signin")} />
+      <BackLink label={app.user ? "Back" : "Back to sign in"} onPress={goToSignIn} />
       <View style={{ gap: 16 }}>
         <IconBadge icon="lock-closed-outline" size={52} />
         <Heading title="Choose a new password" subtitle="Your reset link is validated securely by the server." />

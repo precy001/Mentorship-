@@ -1,34 +1,61 @@
-# Overlay: Mentorship+ splash redesign + app icon
+# Overlay: sign-in / verification-link / dashboard fixes
 
-This ZIP contains only new and modified files, at their exact paths inside `mentorship-plus`.
+This ZIP contains only new and changed files, at their exact paths inside `mentorship-plus`.
 
 ## Install
-1. Close Metro / the dev server.
-2. Back up (or commit) `app/index.tsx` and `app.json`.
-3. Extract this ZIP **into the project root** (`C:\Users\Anita Nwaobi\Documents\Projects\mentorship-plus`) and choose **Replace** when asked.
-4. Run `npx expo start -c` (the `-c` clears the Metro cache).
+1. Stop the dev server.
+2. Back up or commit your project.
+3. Extract this ZIP **into the project root** (`C:\Users\Anita Nwaobi\Documents\Projects\mentorship-plus`) and choose
+   **Replace** for every file. Do not copy files across by hand: several are named `index.tsx` and each belongs in a
+   different folder.
+4. Run `npx expo start -c`.
 
-## Files
 | Path | Action |
 |---|---|
-| `app/index.tsx` | Replaces the existing file |
-| `app.json` | Replaces the existing file (all previous keys kept; icon keys added) |
-| `assets/brand/icon.png` | New |
-| `assets/brand/adaptive-foreground.png` | New |
-| `assets/brand/adaptive-monochrome.png` | New |
-| `assets/brand/favicon.png` | New |
+| `app/+native-intent.ts` | New |
+| `src/lib/routes.ts` | New |
+| `app/_layout.tsx` | Replace |
+| `app/index.tsx` | Replace (splash; design unchanged) |
+| `app/auth.tsx` | Replace |
+| `app/verify.tsx` | Replace |
+| `app/reset-password.tsx` | Replace |
+| `app/counsellor-invite.tsx` | Replace |
+| `app/(admin)/index.tsx` | Replace |
+| `app/(counsellor)/index.tsx` | Replace |
+| `app/(student)/profile.tsx` | Replace |
+| `src/components/WelcomeGate.tsx` | Replace |
 
-If you have edited `app.json` since the upload, copy only the `icon`, `backgroundColor`, `android.backgroundColor`, `android.adaptiveIcon` and `web.favicon` entries into your version instead of replacing it.
-
-## Important: the app icon needs a new native build
-Icons are baked into the APK/AAB. The splash redesign is JavaScript, so it shows up in a dev server or an EAS Update right away, but the launcher icon only changes after a new build:
+## Check it landed correctly (PowerShell, in the project folder)
 ```
-eas build --platform android --profile preview
+Select-String -Path app\_layout.tsx -Pattern "Stack.Protected"
+Select-String -Path "app\(admin)\index.tsx" -Pattern "Admin dashboard"
+Test-Path "app\+native-intent.ts"
 ```
-Because `runtimeVersion.policy` is `appVersion`, an over-the-air update will not carry the icon.
+The first two should print matching lines and the last should print `True`.
 
-## Native launch screen
-`expo-splash-screen` is not in this project's dependencies, and Expo SDK 57 ignores the `splash` key for native builds, so the native launch screen is not configurable without adding that package. To avoid a white flash, `backgroundColor` and `android.backgroundColor` are set to the splash's navy (`#0A1030`). On Android 12+ the system shows the new adaptive icon on that colour before the redesigned screen appears. If you would like a fully custom native splash, add `expo-splash-screen` and its config plugin as a separate step.
+## Getting it to testers
+All changes are JavaScript only, with no native or `app.json` changes, so testers with the current APK can get them
+by update:
+```
+eas update --channel preview --message "Fix blank screen after sign-in and verification link"
+```
+Testers should fully close and reopen the app. The update downloads on that launch and applies on the next one, so
+they may need to close and reopen it twice. A fresh build also works:
+`eas build --platform android --profile preview`.
+
+Updates only reach builds with the same runtime version (`version` in `app.json`, currently `1.0.0`). If the
+testers' APK was built with a different version, make a new build instead.
+
+## What to test
+1. **Sign-in (Android):** sign in as a member, a counsellor and an admin. Each should land on its own dashboard
+   once, with no blank screen. Android Back on the dashboard should leave the app.
+2. **Admin on iPhone (Expo Go):** sign in as admin. The dashboard should appear once.
+3. **Verification link:** register, switch to the email app and tap the link while the app is in the background.
+   The app should open on "Confirming your email…" and then show "Email verified" with **Continue to sign in**.
+   Repeat with the app fully closed.
+4. **Sign-out:** sign out from each role. You should land on the sign-in screen.
+5. **First-time welcome:** sign in with a brand-new account. The welcome sheet should slide up shortly after the
+   dashboard appears.
 
 ## Rollback
-Restore your backups of `app/index.tsx` and `app.json`; the `assets/brand/` folder can stay or be deleted.
+Restore your backup or `git checkout` the listed files, and delete `app/+native-intent.ts` and `src/lib/routes.ts`.

@@ -6,6 +6,7 @@ import { Screen, Heading, Card, Button, BackLink, IconBadge } from "@/src/compon
 import { colors } from "@/src/lib/theme";
 import { useApp } from "@/src/context/AppContext";
 import { apiAcceptCounsellorInvitation } from "@/src/lib/api";
+import { leaveScreen } from "@/src/lib/routes";
 
 const POINTS: { icon: React.ComponentProps<typeof Ionicons>["name"]; text: string }[] = [
   { icon: "mail-outline", text: "The invitation is linked to the email address it was sent to." },
@@ -32,7 +33,7 @@ export default function CounsellorInvite() {
   };
   useEffect(() => { if (!token) setFinished(true); }, [token]);
   return <Screen>
-    <BackLink />
+    <BackLink onPress={() => leaveScreen(app.user?.role)} />
     <View style={{ gap: 16 }}>
       <IconBadge icon="people-outline" size={52} />
       <Heading title="Counsellor invitation" subtitle="Accept your invitation to join the Mentorship+ counselling team." />

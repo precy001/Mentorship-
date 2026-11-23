@@ -1,7 +1,7 @@
 import React, { useRef, useState } from "react";
 import { Alert, Image, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { router, useLocalSearchParams } from "expo-router";
+import { router, useLocalSearchParams, useNavigation } from "expo-router";
 import { Screen, Button, Field, BackLink, Segmented, Card, IconBadge } from "@/src/components/UI";
 import { colors } from "@/src/lib/theme";
 import { toAppUser, useApp } from "@/src/context/AppContext";
@@ -25,6 +25,9 @@ export default function AuthScreen() {
   const [resending, setResending] = useState(false);
   const submitting = useRef(false);
   const { login } = useApp();
+  const navigation = useNavigation();
+  // After signing out, or when opened from an email link, there is no screen behind this one.
+  const showBack = params.signedOut !== "1" && navigation.canGoBack();
 
   const validEmail = (value: string) => /^\S+@\S+\.\S+$/.test(value);
 
@@ -48,15 +51,9 @@ export default function AuthScreen() {
     try {
       const user = await apiLogin(normalizedEmail, password);
       // One mapping for sign-in and session restore keeps every profile field (and the welcome flag) consistent.
+      // Signing in is all this screen does: the root layout then swaps the stack to this person's home in one step.
+      // Navigating here as well is what produced the blank screen (Android) and the doubled dashboard (iPhone).
       await login(toAppUser(user));
-
-      if (user.role === "COUNSELLOR") {
-        router.replace("/(counsellor)");
-      } else if (user.role === "ADMIN" || user.role === "SUPER_ADMIN") {
-        router.replace("/(admin)");
-      } else {
-        router.replace("/(student)");
-      }
     } catch (error) {
       Alert.alert(
         "Unable to sign in",
@@ -88,7 +85,7 @@ export default function AuthScreen() {
 
   return (
     <Screen style={{ gap: 0 }}>
-      {params.signedOut !== "1" ? <BackLink /> : <View style={{ height: 12 }} />}
+      {showBack ? <BackLink /> : <View style={{ height: 12 }} />}
 
       <View style={{ alignItems: "center", paddingTop: 8, paddingBottom: 24, gap: 8 }}>
         <Image

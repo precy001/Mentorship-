@@ -23,12 +23,8 @@ export default function CounsellorWorkspace() {
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [reschedulingId, setReschedulingId] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (app.sessionLoading) return;
-    if (!app.user) router.replace({ pathname: "/auth", params: { mode: "signin" } });
-    else if (app.user.role === "admin" || app.user.role === "super_admin") router.replace("/(admin)");
-    else if (app.user.role !== "counsellor") router.replace("/(student)");
-  }, [app.sessionLoading, app.user]);
+  // Only counsellors can reach this screen: the root layout guards it (app/_layout.tsx) and moves people to the
+  // right place when they sign in or out, so this screen does not redirect on its own.
 
   const refresh = useCallback(async () => {
     try { const [me, inbox, sessions] = await Promise.all([apiCounsellorMe(), apiListDiscussions(), apiListAppointments()]); setProfile(me); setDiscussions(inbox); setAppointments(sessions); }
@@ -57,7 +53,8 @@ export default function CounsellorWorkspace() {
     finally { setUpdatingId(null); }
   };
 
-  const signOut = () => Alert.alert("Sign out?", "Return to sign in?", [{ text: "Stay", style: "cancel" }, { text: "Sign out", onPress: async () => { await app.logout(); router.replace({ pathname: "/auth", params: { mode: "signin", signedOut: "1" } }); } }]);
+  // Signing out returns to the sign-in screen automatically (see app/_layout.tsx).
+  const signOut = () => Alert.alert("Sign out?", "Return to sign in?", [{ text: "Stay", style: "cancel" }, { text: "Sign out", onPress: async () => { await app.logout(); } }]);
 
   const active = discussions.filter(item => !discussionIsClosed(item.status));
   const activeCount = profile?.activeDiscussions ?? 0;
