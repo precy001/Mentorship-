@@ -5,7 +5,7 @@ import { CurrentUser, type AuthenticatedUser } from '../auth/decorators/current-
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { AdminService } from './admin.service';
-import { AcceptCounsellorInvitationDto, AccountStatusDto, CounsellorAvailabilityDto, CounsellorInvitationDto, ResourceDto, ScholarshipDto, GrantDto, TopicActiveDto, TopicAssignmentDto, TopicDto, UserRoleDto } from './admin.dto';
+import { AcceptCounsellorInvitationDto, AccountStatusDto, WhatsAppInvitationDto, CounsellorAvailabilityDto, CounsellorInvitationDto, ResourceDto, ScholarshipDto, GrantDto, TopicActiveDto, TopicAssignmentDto, TopicDto, UserRoleDto } from './admin.dto';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { LgaActiveDto, RenameLgaDto, ServiceAreaActiveDto, ServiceAreaDto } from '../service-areas/service-areas.dto';
 import { MAX_IMAGE_BYTES } from '../storage/image-validation';
@@ -22,6 +22,13 @@ export class AdminController {
   @Patch('users/:id/status') setStatus(@CurrentUser() actor: AuthenticatedUser, @Param('id') id: string, @Body() dto: AccountStatusDto) { return this.admin.setAccountStatus(actor, id, dto.status as UserStatus); }
   @Patch('users/:id/role') setRole(@CurrentUser() actor: AuthenticatedUser, @Param('id') id: string, @Body() dto: UserRoleDto) { return this.admin.setRole(actor, id, dto.role as UserRole); }
   @Post('counsellors/invitations') inviteCounsellor(@CurrentUser() actor: AuthenticatedUser, @Body() dto: CounsellorInvitationDto) { return this.admin.inviteCounsellor(actor, dto.email, dto.topicIds); }
+  /** Counsellors (and admins) create an invitation to share from their own WhatsApp. */
+  @Post('counsellors/invitations/whatsapp')
+  @Roles('COUNSELLOR', 'ADMIN', 'SUPER_ADMIN')
+  inviteCounsellorByWhatsApp(@CurrentUser() actor: AuthenticatedUser, @Body() dto: WhatsAppInvitationDto) { return this.admin.inviteCounsellorByWhatsApp(actor, dto); }
+  @Get('counsellors/requests') counsellorRequests() { return this.admin.listCounsellorRequests(); }
+  @Post('counsellors/requests/:id/approve') approveCounsellorRequest(@CurrentUser() actor: AuthenticatedUser, @Param('id') id: string) { return this.admin.approveCounsellorRequest(actor, id); }
+  @Post('counsellors/requests/:id/decline') declineCounsellorRequest(@CurrentUser() actor: AuthenticatedUser, @Param('id') id: string) { return this.admin.declineCounsellorRequest(actor, id); }
   @Post('counsellors/invitations/accept')
   @Roles('MEMBER', 'COUNSELLOR')
   acceptCounsellorInvitation(@CurrentUser() user: AuthenticatedUser, @Body() body: AcceptCounsellorInvitationDto) { return this.admin.acceptCounsellorInvitation(user, body.token); }

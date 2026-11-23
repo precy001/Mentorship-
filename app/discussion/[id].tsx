@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { Alert, AppState, KeyboardAvoidingView, Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { AppState, KeyboardAvoidingView, Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { AppAlert } from "@/src/lib/alert";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
@@ -34,7 +35,7 @@ export default function DiscussionDetail() {
         if (existing) { setExistingRating(existing); setRatingSent(true); }
       }
     }
-    catch (error) { Alert.alert("Discussion unavailable", error instanceof Error ? error.message : "You may not have access to this discussion."); }
+    catch (error) { AppAlert.alert("Discussion unavailable", error instanceof Error ? error.message : "You may not have access to this discussion."); }
     finally { setLoading(false); }
   }, [id, app.user?.role]);
   useEffect(() => { void refresh(); }, [refresh]);
@@ -72,12 +73,12 @@ export default function DiscussionDetail() {
   const send = async () => {
     if (!message.trim() || sending) return;
     try { setSending(true); await apiSendDiscussionMessage(String(id), message.trim()); setMessage(""); await refresh(); await app.refreshAccountData(); }
-    catch (error) { Alert.alert("Message not sent", error instanceof Error ? error.message : "Please try again."); }
+    catch (error) { AppAlert.alert("Message not sent", error instanceof Error ? error.message : "Please try again."); }
     finally { setSending(false); }
   };
   const close = async () => {
     try { await apiSetDiscussionStatus(String(id), app.user?.role === "member" ? "CANCELLED" : "COMPLETED"); await refresh(); await app.refreshAccountData(); }
-    catch (error) { Alert.alert("Could not update discussion", error instanceof Error ? error.message : "Please try again."); }
+    catch (error) { AppAlert.alert("Could not update discussion", error instanceof Error ? error.message : "Please try again."); }
   };
   const submitRating = async () => {
     if (!discussion) return;
@@ -85,8 +86,8 @@ export default function DiscussionDetail() {
       setSubmittingRating(true);
       await apiCreateRating({ discussionId: discussion.id, score: rating, feedback: feedback.trim() || undefined });
       setRatingSent(true);
-      Alert.alert("Rating submitted", "Thank you. Your feedback is pending moderation.");
-    } catch (error) { Alert.alert("Rating not submitted", error instanceof Error ? error.message : "Please try again."); }
+      AppAlert.alert("Rating submitted", "Thank you. Your feedback is pending moderation.");
+    } catch (error) { AppAlert.alert("Rating not submitted", error instanceof Error ? error.message : "Please try again."); }
     finally { setSubmittingRating(false); }
   };
 
@@ -114,7 +115,7 @@ export default function DiscussionDetail() {
           variant={isMember ? "dangerSoft" : "secondary"}
           size="sm"
           icon={isMember ? "close-circle-outline" : "checkmark-circle-outline"}
-          onPress={() => Alert.alert("Close discussion?", "This will end the active discussion and release the counsellor assignment.", [{ text: "Keep open", style: "cancel" }, { text: "Confirm", style: "destructive", onPress: () => void close() }])}
+          onPress={() => AppAlert.alert("Close discussion?", "This will end the active discussion and release the counsellor assignment.", [{ text: "Keep open", style: "cancel" }, { text: "Confirm", style: "destructive", onPress: () => void close() }])}
         /> : null}
       </Card>
 

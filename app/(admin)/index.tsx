@@ -1,14 +1,16 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { Alert, LayoutChangeEvent, Pressable, ScrollView, Text, View } from "react-native";
+import { BackHandler, LayoutChangeEvent, Pressable, ScrollView, Text, View } from "react-native";
+import { AppAlert } from "@/src/lib/alert";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Screen, Card, Button, Field, Pill, Row, SectionHeader, StatTile, Chip, EmptyState, Avatar, LoadingBlock, IconBadge } from "@/src/components/UI";
+import { Screen, Card, Button, Field, Pill, Row, SectionHeader, StatTile, Chip, EmptyState, Avatar, LoadingBlock, IconBadge, BackLink } from "@/src/components/UI";
 import type { IconName } from "@/src/components/UI";
 import { AudienceField, DatePickerField, ImageUploadField, SelectField, SmartImage, Toast } from "@/src/components/Forms";
 import { colors } from "@/src/lib/theme";
 import { useApp } from "@/src/context/AppContext";
 import {
   AdminAppointment, AdminDashboardStats, AdminGrant, AdminResource, AdminScholarship, AdminTopic, AdminUser, AuditLogRecord,
-  Audience, MembershipCategory, PendingRating, ServiceAreaRecord, UnassignedDiscussion,
+  Audience, CounsellorRequest, MembershipCategory, PendingRating, ServiceAreaRecord, UnassignedDiscussion,
+  apiAdminApproveCounsellorRequest, apiAdminCounsellorRequests, apiAdminDeclineCounsellorRequest,
   apiAdminCreateGrant, apiAdminDeleteGrant, apiAdminGrants, apiAdminSetGrantActive, apiAdminUpdateGrant, apiGetMembershipCategories,
   apiAdminAppointments, apiAdminAssignTopics, apiAdminAuditLogs, apiAdminAutoAssignDiscussion, apiAdminCreateResource,
   apiAdminCreateScholarship, apiAdminCreateTopic, apiAdminDashboard, apiAdminDeleteResource, apiAdminDeleteScholarship,
@@ -52,6 +54,7 @@ export default function AdminDashboard() {
   const [scholarships, setScholarships] = useState<AdminScholarship[]>([]);
   const [grants, setGrants] = useState<AdminGrant[]>([]);
   const [membershipCategories, setMembershipCategories] = useState<MembershipCategory[]>([]);
+  const [counsellorRequests, setCounsellorRequests] = useState<CounsellorRequest[]>([]);
   const [serviceAreas, setServiceAreas] = useState<ServiceAreaRecord[]>([]);
   const [areaForm, setAreaForm] = useState(emptyArea);
   const [areaErrors, setAreaErrors] = useState<FormErrors>({});
@@ -136,13 +139,14 @@ export default function AdminDashboard() {
   /* ---------------------------------------------------------------- data loading */
   const refresh = useCallback(async () => {
     setLoading(true);
-    const names = ["Dashboard", "Accounts", "Topics", "Resources", "Scholarships", "Service areas", "Ratings", "Unassigned discussions", "Appointments", "Audit trail", "Grants", "Membership groups"];
+    const names = ["Dashboard", "Accounts", "Topics", "Resources", "Scholarships", "Service areas", "Ratings", "Unassigned discussions", "Appointments", "Audit trail", "Grants", "Membership groups", "Counsellor requests"];
     const results = await Promise.allSettled([
       apiAdminDashboard(), apiAdminUsers(searchTerm.current), apiAdminTopics(), apiAdminResources(), apiAdminScholarships(),
       apiAdminServiceAreas(), apiAdminPendingRatings(), apiAdminUnassignedDiscussions(), apiAdminAppointments(), apiAdminAuditLogs(),
-      apiAdminGrants(), apiGetMembershipCategories(),
+      apiAdminGrants(), apiGetMembershipCategories(), apiAdminCounsellorRequests(),
     ]);
-    const [s, u, t, r, sc, a, pr, ud, ap, au, gr, mc] = results;
+    const [s, u, t, r, sc, a, pr, ud, ap, au, gr, mc, cr] = results;
+    if (cr.status === "fulfilled") setCounsellorRequests(cr.value as CounsellorRequest[]);
     if (gr.status === "fulfilled") setGrants(gr.value as AdminGrant[]);
     if (mc.status === "fulfilled") setMembershipCategories(mc.value as MembershipCategory[]);
     if (s.status === "fulfilled") setStats(s.value as AdminDashboardStats);
@@ -169,7 +173,7 @@ export default function AdminDashboard() {
     try {
       setUsers(await apiAdminUsers(searchTerm.current));
     } catch (error) {
-      Alert.alert("Search failed", errorMessage(error));
+      AppAlert.alert("Search failed", errorMessage(error));
     } finally {
       setUsersLoading(false);
     }
@@ -187,12 +191,12 @@ export default function AdminDashboard() {
       await task();
     } catch (error) {
       if (isSessionExpired(error)) {
-        Alert.alert("Session expired", "Please sign in again to continue.", [
+        AppAlert.alert("Session expired", "Please sign in again to continue.", [
           // Signing out returns to the sign-in screen automatically (see app/_layout.tsx).
           { text: "Sign in", onPress: async () => { await app.logout(); } },
         ]);
       } else {
-        Alert.alert(errorTitle, errorMessage(error));
+        AppAlert.alert(errorTitle, errorMessage(error));
       }
       lock.current = false;
       setBusyKey(null);
@@ -203,7 +207,7 @@ export default function AdminDashboard() {
     setBusyKey(null);
     if (success) {
       if (success.toast) showToast(success.message);
-      else Alert.alert(success.title, success.message);
+      else AppAlert.alert(success.title, success.message);
     }
     return true;
   };
@@ -223,7 +227,7 @@ export default function AdminDashboard() {
   const assignAllTopics = async (user: AdminUser) => {
     const assigned = user.counsellorProfile?.topics.map((item) => item.topic.id) ?? [];
     const next = assigned.length ? [] : topics.filter((topic) => topic.isActive).map((topic) => topic.id);
-    if (!assigned.length && !next.length) return Alert.alert("No active topics", "Create or reactivate a counselling topic first.");
+    if (!assigned.length && !next.length) return AppAlert.alert("No active topics", "Create or reactivate a counselling topic first.");
     if (!(await confirmAction({ title: "Update counsellor topics", message: assigned.length ? `Remove all topic assignments for ${user.email}?` : `Assign all active topics to ${user.email}?`, destructive: assigned.length > 0 }))) return;
     await perform(`topics-${user.id}`, "Assignment failed", () => apiAdminAssignTopics(user.id, next), { title: "Topics updated", message: assigned.length ? "All topic assignments were removed." : "All active topics were assigned." });
   };
@@ -329,7 +333,6 @@ export default function AdminDashboard() {
     const ok = await perform(`area-del-${area.id}`, "LCDA not deleted", () => apiAdminDeleteServiceArea(area.id), { title: "LCDA deleted", message: `${area.lcda} was removed.` });
     if (ok && editingArea?.id === area.id) resetAreaForm();
   };
-
 
   /* ---------------------------------------------------------------- resources */
   const resetResourceForm = () => {
@@ -503,11 +506,17 @@ export default function AdminDashboard() {
     await perform(`rating-${rating.id}`, status === "APPROVED" ? "Rating not approved" : "Rating not rejected", () => apiAdminModerateRating(rating.id, status), { title: "Rating moderated", message: `The rating was ${status.toLowerCase()}.` });
   };
 
+  const decideCounsellorRequest = async (item: CounsellorRequest, approve: boolean) => {
+    const who = item.applicant?.displayName || item.applicant?.email || "this person";
+    if (!(await confirmAction({ title: approve ? "Approve counsellor" : "Decline request", message: approve ? `${who} will become a counsellor with ${item.topics.length ? item.topics.map((t) => t.name).join(", ") : "no topics yet (assign them in Accounts)"}.` : `${who} will stay a member and be told the request was not approved.`, confirmText: approve ? "Approve" : "Decline", destructive: !approve }))) return;
+    await perform(`request-${item.id}`, approve ? "Request not approved" : "Request not declined", () => (approve ? apiAdminApproveCounsellorRequest(item.id) : apiAdminDeclineCounsellorRequest(item.id)), approve ? { title: "Counsellor approved", message: `${who} is now a counsellor and has been notified.` } : { title: "", message: "Request declined.", toast: true });
+  };
+
   const autoAssign = (item: UnassignedDiscussion) =>
     perform(`assign-${item.id}`, "Assignment failed", () => apiAdminAutoAssignDiscussion(item.id), { title: "Counsellor assigned", message: `“${item.title}” was assigned to an available counsellor.` });
 
   const signOut = () =>
-    Alert.alert("Sign out?", "Return to sign in?", [
+    AppAlert.alert("Sign out?", "Return to sign in?", [
       { text: "Cancel", style: "cancel" },
       // Signing out returns to the sign-in screen automatically (see app/_layout.tsx).
       { text: "Sign out", onPress: async () => { await app.logout(); } },
@@ -536,11 +545,19 @@ export default function AdminDashboard() {
     </Row>
   );
 
+  // Android Back on a section returns to the Overview first (the dashboard is the admin's home screen).
+  useEffect(() => {
+    if (section === "overview") return;
+    const sub = BackHandler.addEventListener("hardwareBackPress", () => { switchSection("overview"); return true; });
+    return () => sub.remove();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [section]);
+
   const switchSection = (next: AdminSection) => {
     setSection(next);
     scrollRef.current?.scrollTo({ y: 0, animated: false });
   };
-  const attention = pendingRatings.length + unassignedDiscussions.length;
+  const attention = pendingRatings.length + unassignedDiscussions.length + counsellorRequests.length;
   const sections: { key: AdminSection; label: string; count?: number }[] = [
     { key: "overview", label: "Overview" },
     { key: "accounts", label: "Accounts" },
@@ -591,6 +608,7 @@ export default function AdminDashboard() {
           </Card>
         ) : null}
         {loading && !stats ? <LoadingBlock label="Loading platform data…" /> : null}
+        {section !== "overview" ? <BackLink label="Overview" onPress={() => switchSection("overview")} /> : null}
 
         {section === "overview" ? <>
           {h("Platform overview", "A live snapshot of accounts, counselling activity and published content.")}
@@ -604,6 +622,7 @@ export default function AdminDashboard() {
               {title(attention ? "Needs your attention" : "Nothing needs attention", attention ? "These items are waiting on an administrator." : "There are no pending ratings or unassigned discussions.")}
               {pendingRatings.length ? <Row style={{ justifyContent: "space-between" }}><Text style={{ color: colors.ink, flex: 1 }}>{pendingRatings.length} {pendingRatings.length === 1 ? "rating" : "ratings"} awaiting moderation</Text><Button size="sm" title="Review" variant="secondary" onPress={() => switchSection("counselling")} /></Row> : null}
               {unassignedDiscussions.length ? <Row style={{ justifyContent: "space-between" }}><Text style={{ color: colors.ink, flex: 1 }}>{unassignedDiscussions.length} {unassignedDiscussions.length === 1 ? "discussion" : "discussions"} awaiting a counsellor</Text><Button size="sm" title="Assign" variant="secondary" onPress={() => switchSection("counselling")} /></Row> : null}
+              {counsellorRequests.length ? <Row style={{ justifyContent: "space-between" }}><Text style={{ color: colors.ink, flex: 1 }}>{counsellorRequests.length} counsellor {counsellorRequests.length === 1 ? "request" : "requests"} to approve</Text><Button size="sm" title="Review" variant="secondary" onPress={() => switchSection("counselling")} /></Row> : null}
             </Card>
           ) : null}
           <Button title="Refresh platform data" icon="refresh" variant="secondary" loading={loading} disabled={anyBusy} onPress={() => void refresh()} />
@@ -675,7 +694,6 @@ export default function AdminDashboard() {
         {renderSectionToggle("users", users.length)}
         {!users.length && !loading ? emptyCard(searchTerm.current ? `No accounts match “${searchTerm.current}”.` : "No accounts were found.") : null}
 
-
         {/* ------------------------------------------------ invitations */}
         {h("Invite a counsellor", "Send an invitation to an existing Mentorship+ account or a new registrant. The invitee must sign in with the invited email and accept the link.")}
         <Card style={adminCardStyle}>
@@ -701,6 +719,27 @@ export default function AdminDashboard() {
         </> : null}
 
         {section === "counselling" ? <>
+        {/* ------------------------------------------------ counsellor requests (WhatsApp invitations) */}
+        {h("Counsellor requests", `People who accepted a counsellor invitation shared on WhatsApp by a counsellor · ${counsellorRequests.length} waiting for approval.`)}
+        {counsellorRequests.map((item) => (
+          <Card key={item.id} style={adminCardStyle}>
+            <Row style={{ gap: 12, alignItems: "flex-start" }}>
+              <Avatar name={item.applicant?.displayName || item.applicant?.email} size={44} />
+              <View style={{ flex: 1, gap: 3 }}>
+                <Text style={{ color: colors.ink, fontWeight: "800" }}>{item.applicant?.displayName || item.inviteeName || "New counsellor"}</Text>
+                <Text style={{ color: colors.muted, fontSize: 12 }}>{item.applicant?.email}{item.phoneNumber ? ` · WhatsApp +${item.phoneNumber}` : ""}</Text>
+                <Text style={{ color: colors.muted, fontSize: 12 }}>Invited by {item.invitedBy?.displayName || item.invitedBy?.email || "a counsellor"}{item.acceptedAt ? ` · accepted ${formatDisplayDate(item.acceptedAt)}` : ""}</Text>
+                <Text style={{ color: colors.primaryDark, fontSize: 12, fontWeight: "700" }}>Topics: {item.topics.length ? item.topics.map((t) => t.name).join(", ") : "none yet"}</Text>
+              </View>
+            </Row>
+            <Row style={{ flexWrap: "wrap", gap: 8 }}>
+              <Button size="sm" title="Approve" icon="checkmark" loading={isBusy(`request-${item.id}`)} disabled={anyBusy} onPress={() => void decideCounsellorRequest(item, true)} />
+              <Button size="sm" title="Decline" variant="dangerSoft" disabled={anyBusy} onPress={() => void decideCounsellorRequest(item, false)} />
+            </Row>
+          </Card>
+        ))}
+        {!counsellorRequests.length && !loading ? emptyCard("No counsellor requests are waiting. Counsellors can invite others on WhatsApp from their workspace.") : null}
+
         {/* ------------------------------------------------ appointments */}
         {h("Appointment oversight", `Review appointment requests and their current status · ${appointments.length} records. Members and assigned counsellors manage changes.`)}
         {visibleItems("appointments", appointments).map((item) => (
@@ -716,7 +755,6 @@ export default function AdminDashboard() {
         {renderSectionToggle("appointments", appointments.length)}
         {!appointments.length && !loading ? emptyCard("No appointment records yet.") : null}
 
-
         {/* ------------------------------------------------ discussions */}
         {h("Unassigned counselling discussions", `Automatically assign open discussions to an available counsellor with the matching topic and lowest current load · ${unassignedDiscussions.length} awaiting assignment.`)}
         {visibleItems("unassignedDiscussions", unassignedDiscussions).map((item) => (
@@ -728,7 +766,6 @@ export default function AdminDashboard() {
         ))}
         {renderSectionToggle("unassignedDiscussions", unassignedDiscussions.length)}
         {!unassignedDiscussions.length && !loading ? emptyCard("There are no unassigned discussions.") : null}
-
 
         {/* ------------------------------------------------ ratings */}
         {h("Counsellor rating moderation", `Only approved ratings contribute to public counsellor averages · ${pendingRatings.length} awaiting review.`)}
@@ -745,7 +782,6 @@ export default function AdminDashboard() {
         ))}
         {renderSectionToggle("pendingRatings", pendingRatings.length)}
         {!pendingRatings.length && !loading ? emptyCard("No ratings are waiting for moderation.") : null}
-
 
         {/* ------------------------------------------------ topics */}
         {h("Counselling topic management", `Create topics and control whether members can select them · ${topics.length} topics.`)}
@@ -944,7 +980,6 @@ export default function AdminDashboard() {
           </>;
         })()}
         {!serviceAreas.length && !loading ? emptyCard("No service areas are configured. Add the first LCDA above.") : null}
-
 
         {/* ------------------------------------------------ audit */}
         {h("Administrative audit trail", `Recent account, topic, content, appointment and moderation actions · ${auditLogs.length} entries.`)}

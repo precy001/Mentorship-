@@ -1,5 +1,6 @@
 import React, { useCallback, useRef, useState } from "react";
-import { Alert, Pressable, Text, View } from "react-native";
+import { Pressable, Text, View } from "react-native";
+import { AppAlert } from "@/src/lib/alert";
 import { router, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Screen, Card, Button, ButtonRow, Pill, Avatar, HeroCard, SectionHeader, StatTile, Segmented, PressableCard, EmptyState, LoadingBlock } from "@/src/components/UI";
@@ -7,6 +8,7 @@ import { colors } from "@/src/lib/theme";
 import { appointmentTone, availabilityTone, discussionIsClosed, discussionTone, formatDateTime, humanize, pluralize } from "@/src/lib/format";
 import { useApp } from "@/src/context/AppContext";
 import { RescheduleForm } from "@/src/components/RescheduleForm";
+import { InviteCounsellorCard } from "@/src/components/InviteCounsellorCard";
 import { apiCounsellorMe, apiCounsellorSetAvailability, apiListDiscussions, apiListAppointments, apiUpdateAppointmentStatus, apiRescheduleAppointment, CounsellorSelf, DiscussionRecord, AppointmentRecord } from "@/src/lib/api";
 
 type Availability = "AVAILABLE" | "OFFLINE" | "ON_LEAVE";
@@ -28,7 +30,7 @@ export default function CounsellorWorkspace() {
 
   const refresh = useCallback(async (silent = false) => {
     try { const [me, inbox, sessions] = await Promise.all([apiCounsellorMe(), apiListDiscussions(), apiListAppointments()]); setProfile(me); setDiscussions(inbox); setAppointments(sessions); }
-    catch (error) { if (!silent) Alert.alert("Counsellor workspace unavailable", error instanceof Error ? error.message : "Please try again."); }
+    catch (error) { if (!silent) AppAlert.alert("Counsellor workspace unavailable", error instanceof Error ? error.message : "Please try again."); }
     finally { setLoading(false); }
   }, []);
   // Load on first visit, then quietly refresh whenever the workspace is shown again (new assignments, replies).
@@ -43,24 +45,24 @@ export default function CounsellorWorkspace() {
 
   const setAvailability = async (availability: Availability) => {
     try { setSaving(true); await apiCounsellorSetAvailability(availability); await refresh(); }
-    catch (error) { Alert.alert("Availability not updated", error instanceof Error ? error.message : "Please try again."); }
+    catch (error) { AppAlert.alert("Availability not updated", error instanceof Error ? error.message : "Please try again."); }
     finally { setSaving(false); }
   };
 
   const updateAppointment = async (item: AppointmentRecord, status: "CONFIRMED" | "COMPLETED" | "NO_SHOW", errorTitle: string) => {
     try { setUpdatingId(item.id); await apiUpdateAppointmentStatus(item.id, status); await refresh(); }
-    catch (error) { Alert.alert(errorTitle, error instanceof Error ? error.message : "Please try again."); }
+    catch (error) { AppAlert.alert(errorTitle, error instanceof Error ? error.message : "Please try again."); }
     finally { setUpdatingId(null); }
   };
 
   const proposeNewTime = async (item: AppointmentRecord, startsAt: string, endsAt: string) => {
-    try { setUpdatingId(item.id); await apiRescheduleAppointment(item.id, startsAt, endsAt); setReschedulingId(null); await refresh(); Alert.alert("New time sent", "The member will be asked to confirm it."); }
-    catch (error) { Alert.alert("Could not reschedule", error instanceof Error ? error.message : "Please choose another time."); }
+    try { setUpdatingId(item.id); await apiRescheduleAppointment(item.id, startsAt, endsAt); setReschedulingId(null); await refresh(); AppAlert.alert("New time sent", "The member will be asked to confirm it."); }
+    catch (error) { AppAlert.alert("Could not reschedule", error instanceof Error ? error.message : "Please choose another time."); }
     finally { setUpdatingId(null); }
   };
 
   // Signing out returns to the sign-in screen automatically (see app/_layout.tsx).
-  const signOut = () => Alert.alert("Sign out?", "Return to sign in?", [{ text: "Stay", style: "cancel" }, { text: "Sign out", onPress: async () => { await app.logout(); } }]);
+  const signOut = () => AppAlert.alert("Sign out?", "Return to sign in?", [{ text: "Stay", style: "cancel" }, { text: "Sign out", onPress: async () => { await app.logout(); } }]);
 
   const active = discussions.filter(item => !discussionIsClosed(item.status));
   const activeCount = profile?.activeDiscussions ?? 0;
@@ -99,7 +101,7 @@ export default function CounsellorWorkspace() {
           disabled={saving}
           onChange={(next) => {
             if (next === current) return;
-            if (next === "AVAILABLE" && atCapacity) return Alert.alert("At your caseload limit", `You already have ${CAPACITY} active discussions. Complete one before switching to Available.`);
+            if (next === "AVAILABLE" && atCapacity) return AppAlert.alert("At your caseload limit", `You already have ${CAPACITY} active discussions. Complete one before switching to Available.`);
             void setAvailability(next);
           }}
           options={[{ label: "Available", value: "AVAILABLE" }, { label: "Offline", value: "OFFLINE" }, { label: "On leave", value: "ON_LEAVE" }]}
@@ -109,6 +111,9 @@ export default function CounsellorWorkspace() {
 
       <SectionHeader title="Your assigned topics" />
       {profile?.topics.length ? <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>{profile.topics.map(topic => <Pill key={topic.id} label={topic.name} tone="blue" />)}</View> : <Text style={{ color: colors.muted }}>No topics are assigned to you yet. An administrator can assign them.</Text>}
+
+      <SectionHeader title="Grow the team" subtitle="Know someone who would be a good counsellor?" />
+      <InviteCounsellorCard />
 
       <SectionHeader title="Discussion inbox" subtitle={discussions.length ? `${pluralize(active.length, "active conversation")} · ${discussions.length} in total` : "Open a discussion to read and reply to the member."} />
       {inbox.length ? inbox.map(item => {

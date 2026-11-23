@@ -26,6 +26,13 @@ export class AccountStatusDto {
 export class TopicActiveDto {
   @IsIn([true, false]) isActive!: boolean;
 }
+/** A counsellor (or admin) invites someone to become a counsellor by sharing a link on WhatsApp. */
+export class WhatsAppInvitationDto {
+  @Trim() @IsString({ message: 'Enter the WhatsApp number.' }) @MinLength(7, { message: 'Enter the full WhatsApp number, including the country code if outside Nigeria.' }) @MaxLength(24) @Matches(/^\+?[\d\s\-()]{7,24}$/, { message: 'Enter a valid WhatsApp number, for example 0803 123 4567 or +234 803 123 4567.' }) phoneNumber!: string;
+  @Trim() @IsOptional() @IsString() @MaxLength(160, { message: 'Name must be 160 characters or fewer.' }) name?: string;
+  /** Admins only (counsellor invitations use the inviting counsellor's own topics). */
+  @IsOptional() @IsArray() @IsString({ each: true }) topicIds?: string[];
+}
 export class AcceptCounsellorInvitationDto {
   @IsString() @MinLength(20) token!: string;
 }

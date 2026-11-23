@@ -213,6 +213,20 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }));
   }, []);
 
+  // When the app returns to the foreground, reload the account (at most once a minute) so changes made elsewhere
+  // apply without signing out and in, e.g. an administrator approving this person as a counsellor.
+  const lastAccountCheck = useRef(0);
+  const refreshAccount = useCallback(async () => {
+    if (Date.now() - lastAccountCheck.current < 60_000) return;
+    lastAccountCheck.current = Date.now();
+    const generation = accountGeneration.current;
+    try {
+      const fresh = toAppUser(await apiMe());
+      if (generation !== accountGeneration.current) return;
+      setState(current => (current.user && current.user.id === fresh.id ? { ...current, user: fresh } : current));
+    } catch { /* offline or signed out elsewhere: keep the current session as it is */ }
+  }, []);
+
   // In-app delivery: check for new notifications while the app is open and whenever it returns to the foreground.
   useEffect(() => {
     if (!userId) return;
@@ -221,10 +235,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const stop = () => { if (timer) { clearInterval(timer); timer = null; } };
     if (NativeAppState.currentState === "active") start();
     const subscription = NativeAppState.addEventListener("change", status => {
-      if (status === "active") { void refreshNotifications(); start(); } else stop();
+      if (status === "active") { void refreshNotifications(); void refreshAccount(); start(); } else stop();
     });
     return () => { stop(); subscription.remove(); };
-  }, [userId, refreshNotifications]);
+  }, [userId, refreshNotifications, refreshAccount]);
 
   const patch = (fn: (current: AppState) => AppState) => setState(current => fn(current));
 

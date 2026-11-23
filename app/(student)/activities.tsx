@@ -1,6 +1,7 @@
 import React from "react";
 import { router } from "expo-router";
-import { Screen, Heading, SectionHeader, ListGroup, ListRow, type IconName } from "@/src/components/UI";
+import { Screen, Heading, SectionHeader, ListGroup, ListRow, type IconName, BackLink } from "@/src/components/UI";
+import { backToHome } from "@/src/lib/routes";
 
 type Activity = { title: string; description: string; slug: string; icon: IconName };
 
@@ -36,6 +37,7 @@ export default function Activities() {
   const go = (slug: string) => slug === "counselling" ? router.push("/(student)/counselling") : router.push({ pathname: "/feature/[slug]", params: { slug } });
   return (
     <Screen tabBar>
+      <BackLink onPress={backToHome} />
       <Heading title="Activities" subtitle="Small actions that can help you move forward." />
       {GROUPS.map((group) => (
         <React.Fragment key={group.title}>

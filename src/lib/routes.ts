@@ -25,3 +25,9 @@ export type ContentKind = "resource" | "scholarship" | "grant";
 export function openContent(kind: ContentKind, id: string) {
   router.push({ pathname: "/content/[kind]/[id]", params: { kind, id } });
 }
+
+/** Back from a member tab (Explore, Support, Activities, Profile): the previous screen, otherwise Home. */
+export function backToHome() {
+  if (router.canGoBack()) router.back();
+  else router.navigate("/(student)");
+}

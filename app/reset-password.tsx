@@ -1,5 +1,6 @@
 import React, { useState } from "react";
-import { Alert, Text, View } from "react-native";
+import { Text, View } from "react-native";
+import { AppAlert } from "@/src/lib/alert";
 import { Ionicons } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
 import { Screen, Heading, Card, Button, Field, BackLink, IconBadge } from "@/src/components/UI";
@@ -21,7 +22,7 @@ export default function ResetPassword() {
 
   const submit = async () => {
     if (!token) {
-      Alert.alert("Invalid link", "Request a new password-reset email.");
+      AppAlert.alert("Invalid link", "Request a new password-reset email.");
       return;
     }
     const next = {
@@ -30,21 +31,21 @@ export default function ResetPassword() {
     };
     setErrors(next);
     if (next.password) {
-      Alert.alert("Password too short", "Use at least 8 characters.");
+      AppAlert.alert("Password too short", "Use at least 8 characters.");
       return;
     }
     if (next.confirm) {
-      Alert.alert("Passwords don't match", "Enter the same password in both fields.");
+      AppAlert.alert("Passwords don't match", "Enter the same password in both fields.");
       return;
     }
     setBusy(true);
     try {
       const result = await apiResetPassword(token, password);
-      Alert.alert("Password updated", result.message, [
+      AppAlert.alert("Password updated", result.message, [
         { text: "Continue", onPress: goToSignIn },
       ]);
     } catch (error) {
-      Alert.alert("Unable to reset password", error instanceof Error ? error.message : "Request a new reset link and try again.");
+      AppAlert.alert("Unable to reset password", error instanceof Error ? error.message : "Request a new reset link and try again.");
     } finally {
       setBusy(false);
     }

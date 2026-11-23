@@ -1,7 +1,9 @@
 import React, { useCallback, useRef, useState } from "react";
-import { Alert, Text, View } from "react-native";
+import { Text, View } from "react-native";
+import { AppAlert } from "@/src/lib/alert";
 import { router, useFocusEffect } from "expo-router";
-import { Screen, Heading, Card, Button, Pill, Field, HeroCard, Chip, SectionHeader, PressableCard, EmptyState, LoadingBlock, ErrorState } from "@/src/components/UI";
+import { Screen, Heading, Card, Button, Pill, Field, HeroCard, Chip, SectionHeader, PressableCard, EmptyState, LoadingBlock, ErrorState, BackLink } from "@/src/components/UI";
+import { backToHome } from "@/src/lib/routes";
 import { colors } from "@/src/lib/theme";
 import { discussionTone, humanize, pluralize } from "@/src/lib/format";
 import { useApp } from "@/src/context/AppContext";
@@ -52,7 +54,7 @@ export default function Counselling() {
     } catch (error) {
       const text = error instanceof Error ? error.message : "Please try again.";
       setLoadError(text);
-      if (!silent) Alert.alert("Counselling unavailable", text);
+      if (!silent) AppAlert.alert("Counselling unavailable", text);
     } finally {
       setLoading(false);
     }
@@ -76,7 +78,7 @@ export default function Counselling() {
   const create = async () => {
     setShowErrors(true);
     if (!selectedTopic || !title.trim() || !message.trim()) {
-      return Alert.alert(
+      return AppAlert.alert(
         "Complete the form",
         "Choose a topic and enter a title and opening message."
       );
@@ -104,7 +106,7 @@ export default function Counselling() {
         params: { id: discussion.id },
       });
     } catch (error) {
-      Alert.alert(
+      AppAlert.alert(
         "Could not start discussion",
         error instanceof Error ? error.message : "Please try again."
       );
@@ -115,6 +117,7 @@ export default function Counselling() {
 
   return (
     <Screen tabBar onRefresh={onRefresh} refreshing={refreshing}>
+      <BackLink onPress={backToHome} />
       <Heading
         title="You don’t have to do it alone"
         subtitle="Start a private discussion with a counsellor assigned to your chosen topic."

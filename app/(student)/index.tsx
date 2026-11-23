@@ -1,5 +1,6 @@
 import React, { useState } from "react";
-import { Alert, Pressable, Text, View } from "react-native";
+import { Pressable, Text, View } from "react-native";
+import { AppAlert } from "@/src/lib/alert";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Screen, SectionHeader, Card, Pill, Avatar, HeroCard, IconBadge, Button } from "@/src/components/UI";
@@ -121,7 +122,7 @@ export default function StudentHome() {
             accessibilityRole="checkbox"
             accessibilityState={{ checked: g.done }}
             accessibilityLabel={g.title}
-            onPress={() => { void app.toggleGoal(g.id).catch(error => Alert.alert("Goal not updated", error instanceof Error ? error.message : "Please try again.")); }}
+            onPress={() => { void app.toggleGoal(g.id).catch(error => AppAlert.alert("Goal not updated", error instanceof Error ? error.message : "Please try again.")); }}
             style={{ flexDirection: "row", alignItems: "center", gap: 12, minHeight: 52, paddingVertical: 8, borderBottomWidth: i < list.length - 1 ? 1 : 0, borderBottomColor: colors.line }}
           >
             <Ionicons name={g.done ? "checkmark-circle" : "ellipse-outline"} size={24} color={g.done ? colors.primary : colors.mutedLight} />

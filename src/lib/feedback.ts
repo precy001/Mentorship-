@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Alert } from "react-native";
+import { AppAlert } from "./alert";
+
 import { ApiError } from "./api";
 
 export function errorMessage(error: unknown, fallback = "Something went wrong. Please try again."): string {
@@ -12,7 +13,7 @@ export function isSessionExpired(error: unknown): boolean {
   return error instanceof ApiError && error.status === 401;
 }
 
-/** Native confirmation dialog as a promise. Resolves false when cancelled or dismissed. */
+/** Mentorship+ confirmation dialog as a promise. Resolves false when cancelled or dismissed. */
 export function confirmAction(options: {
   title: string;
   message: string;
@@ -20,7 +21,7 @@ export function confirmAction(options: {
   destructive?: boolean;
 }): Promise<boolean> {
   return new Promise((resolve) => {
-    Alert.alert(
+    AppAlert.alert(
       options.title,
       options.message,
       [

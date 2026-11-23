@@ -1,4 +1,8 @@
-# Overlay: grants, audience targeting, NIN, insights fix and UX improvements
+# Overlay: back buttons, WhatsApp counsellor invitations, check-your-inbox step, custom dialogs, grants, NIN and more
+
+This ZIP is cumulative. It contains everything since the project you uploaded: the grants/NIN/audit update, the
+custom dialogs, and the latest additions. Apply only this one. If you already applied an earlier ZIP, extracting
+this one over it is safe; the shared files are the same, with the new changes added.
 
 This ZIP holds only new and changed files, at their exact paths inside `mentorship-plus` (app files at the top
 level, API files under `api/`). `AUDIT.md` has the full audit.
@@ -20,7 +24,8 @@ The API rejects fields it doesn't recognise. If the app update reaches phones be
 registration fails with "property nin should not exist". So, in this order:
 
 1. Push the code so Render rebuilds the API.
-2. Apply the migration to the production database (back up first):
+2. Apply the migrations to the production database (back up first). There are two new ones, and this single
+   command applies both:
    ```
    npm --prefix api run prisma:migrate:deploy
    ```
@@ -50,7 +55,18 @@ Testers should close and reopen the app (possibly twice). For local testing: `np
    on Home. Add the NIN in Profile → Save details, and the prompt disappears.
 6. **Item page:** tap any card on Home or Explore. You should get the full text, deadline, Save, Share and (if a
    link is set) Apply.
-7. **Conversation:** open a discussion on two phones (member and counsellor). A reply appears on the other phone
+7. **Back buttons:** open Explore, Support, Activities and Profile. Each has Back (to Home). Sign out: the sign-in
+   screen has Back (to the welcome screen). As an admin, open any section: "‹ Overview" takes you back.
+8. **Check your inbox:** register a new account. You should land on "Check your inbox" with the Spam reminder.
+   Try signing in before verifying: you get "Verify your email first" with a Resend option.
+9. **WhatsApp invitation:** as a counsellor, enter a WhatsApp number in "Invite a counsellor" and tap Invite on
+   WhatsApp. WhatsApp should open with the message. On the invited phone (with the app installed and signed in as a
+   member), tap the link, then Open in Mentorship+, then Accept invitation. That shows "Request sent". As an admin, go
+   to Counselling → Counsellor requests and tap Approve. The invited person reopens the app and sees the counsellor
+   workspace.
+10. **Dialogs:** change your profile picture, log out, or submit a form with a mistake. Each message should appear in
+   the new Mentorship+ dialog (rounded card with an icon), not the grey system box, on both Android and iPhone.
+11. **Conversation:** open a discussion on two phones (member and counsellor). A reply appears on the other phone
    within about 15 seconds without leaving the screen.
 
 ## Placeholder grants

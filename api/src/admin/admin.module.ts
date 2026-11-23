@@ -5,5 +5,6 @@ import { StorageModule } from '../storage/storage.module';
 import { ServiceAreasModule } from '../service-areas/service-areas.module';
 import { AdminController } from './admin.controller';
 import { AdminService } from './admin.service';
-@Module({ imports: [AuthModule, MailModule, StorageModule, ServiceAreasModule], controllers: [AdminController], providers: [AdminService] })
+import { InviteLinkController } from './invite-link.controller';
+@Module({ imports: [AuthModule, MailModule, StorageModule, ServiceAreasModule], controllers: [AdminController, InviteLinkController], providers: [AdminService] })
 export class AdminModule {}

@@ -1,13 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { ScrollView, Text } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
-import { Screen, Heading, Button, Chip, Segmented, SearchField, LoadingBlock, ErrorState, EmptyState } from "@/src/components/UI";
+import { Screen, Heading, Button, Chip, Segmented, SearchField, LoadingBlock, ErrorState, EmptyState, BackLink } from "@/src/components/UI";
 import { GrantCard, ResourceCard, ScholarshipCard } from "@/src/components/ContentCards";
 import { colors } from "@/src/lib/theme";
 import { pluralize } from "@/src/lib/format";
 import { useApp } from "@/src/context/AppContext";
 import { isForMember } from "@/src/lib/audience";
-import { openContent } from "@/src/lib/routes";
+import { openContent, backToHome } from "@/src/lib/routes";
 import { ApiError, apiGetPublicGrants, apiGetPublicResources, apiGetPublicScholarships, PublicGrant, PublicResource, PublicScholarship } from "@/src/lib/api";
 
 type Tab = "resources" | "scholarships" | "grants";
@@ -69,6 +69,7 @@ export default function Explore() {
 
   return (
     <Screen tabBar onRefresh={load} refreshing={loading && anyLoaded}>
+      <BackLink onPress={backToHome} />
       <Heading title="Explore your possibilities" subtitle={group ? `Resources and opportunities for ${group.toLowerCase()}, published by Mentorship+.` : "Resources and opportunities published by Mentorship+."} />
 
       <SearchField value={query} onChangeText={setQuery} placeholder="Search resources, scholarships, grants…" accessibilityLabel="Search resources, scholarships and grants" />

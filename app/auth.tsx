@@ -1,5 +1,6 @@
 import React, { useRef, useState } from "react";
-import { Alert, Image, Text, View } from "react-native";
+import { Image, Text, View } from "react-native";
+import { AppAlert } from "@/src/lib/alert";
 import { Ionicons } from "@expo/vector-icons";
 import { router, useLocalSearchParams, useNavigation } from "expo-router";
 import { Screen, Button, Field, BackLink, Segmented, Card, IconBadge } from "@/src/components/UI";
@@ -26,8 +27,9 @@ export default function AuthScreen() {
   const submitting = useRef(false);
   const { login } = useApp();
   const navigation = useNavigation();
-  // After signing out, or when opened from an email link, there is no screen behind this one.
-  const showBack = params.signedOut !== "1" && navigation.canGoBack();
+  // After signing out, or when opened from an email link, there is no screen behind this one: Back then opens
+  // the welcome screen instead.
+  const goBack = () => (navigation.canGoBack() ? router.back() : router.replace("/"));
 
   const validEmail = (value: string) => /^\S+@\S+\.\S+$/.test(value);
 
@@ -55,9 +57,21 @@ export default function AuthScreen() {
       // Navigating here as well is what produced the blank screen (Android) and the doubled dashboard (iPhone).
       await login(toAppUser(user));
     } catch (error) {
-      Alert.alert(
+      const message = error instanceof Error ? error.message : "";
+      if (/not been verified|verify your email|verification/i.test(message)) {
+        AppAlert.alert(
+          "Verify your email first",
+          `Open the verification link we sent to ${normalizedEmail}. Can't find it? Check your Spam or Junk folder (and the Promotions tab in Gmail).`,
+          [
+            { text: "OK", style: "cancel" },
+            { text: "Resend email", onPress: () => router.push({ pathname: "/check-email", params: { email: normalizedEmail } }) },
+          ],
+        );
+        return;
+      }
+      AppAlert.alert(
         "Unable to sign in",
-        error instanceof Error ? error.message : "We could not sign you in. Check your details and try again.",
+        message || "We could not sign you in. Check your details and try again.",
       );
     } finally {
       submitting.current = false;
@@ -69,15 +83,15 @@ export default function AuthScreen() {
     const normalizedEmail = email.trim().toLowerCase();
     if (!validEmail(normalizedEmail)) {
       setErrors((current) => ({ ...current, email: "Enter the email address you used to register." }));
-      Alert.alert("Enter your email", "Enter the email address you used to register.");
+      AppAlert.alert("Enter your email", "Enter the email address you used to register.");
       return;
     }
     setResending(true);
     try {
       const result = await apiResendVerification(normalizedEmail);
-      Alert.alert("Request submitted", result.message);
+      AppAlert.alert("Check your inbox", `${result.message}\n\nCan't see it? Check your Spam or Junk folder too.`);
     } catch (error) {
-      Alert.alert("Unable to resend link", error instanceof Error ? error.message : "Please try again.");
+      AppAlert.alert("Unable to resend link", error instanceof Error ? error.message : "Please try again.");
     } finally {
       setResending(false);
     }
@@ -85,7 +99,7 @@ export default function AuthScreen() {
 
   return (
     <Screen style={{ gap: 0 }}>
-      {showBack ? <BackLink /> : <View style={{ height: 12 }} />}
+      <BackLink onPress={goBack} />
 
       <View style={{ alignItems: "center", paddingTop: 8, paddingBottom: 24, gap: 8 }}>
         <Image

@@ -339,14 +339,29 @@ model UserNotification {
 
 model CounsellorInvitation {
   id          String   @id @default(cuid())
-  email       String   @db.VarChar(320)
+  /// Set for email invitations (sent by an administrator). Null for WhatsApp invitations.
+  email       String?  @db.VarChar(320)
+  /// "EMAIL" or "WHATSAPP" (a link shared from the inviter's own WhatsApp).
+  channel     String   @default("EMAIL") @db.VarChar(20)
+  /// WhatsApp invitations: the number it was shared with (digits, international format) and an optional name.
+  phoneNumber String?  @db.VarChar(32)
+  inviteeName String?  @db.VarChar(160)
   tokenHash   String   @unique @db.VarChar(64)
   topicIds    Json     @default("[]")
   invitedById String
+  /// True when a counsellor sent it: an administrator approves before the counsellor role is granted.
+  requiresApproval Boolean @default(false)
   expiresAt   DateTime
   acceptedAt  DateTime?
+  /// Who accepted it (WhatsApp invitations are not tied to an email address).
+  acceptedById String?
+  approvedAt  DateTime?
+  approvedById String?
+  declinedAt  DateTime?
   createdAt   DateTime @default(now())
   @@index([email, acceptedAt, expiresAt])
+  @@index([requiresApproval, acceptedAt, approvedAt, declinedAt], map: "CounsellorInvitation_pending_requests_idx")
+  @@index([invitedById, createdAt])
 }
 
 

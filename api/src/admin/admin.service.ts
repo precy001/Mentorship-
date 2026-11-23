@@ -3,6 +3,7 @@ import { AppointmentStatus, CounsellorAvailability, DiscussionStatus, Prisma, Us
 import { PrismaService } from '../prisma/prisma.service';
 import type { AuthenticatedUser } from '../auth/decorators/current-user.decorator';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
+import { toWhatsAppNumber } from '../common/phone';
 import { ConfigService } from '@nestjs/config';
 import { MailService } from '../mail/mail.service';
 import { StorageService, type UploadableImage } from '../storage/storage.service';
@@ -359,25 +360,158 @@ export class AdminService {
     return { message: 'Counsellor invitation sent. It expires in seven days.' };
   }
 
+  /** How many WhatsApp invitations one person may create in 24 hours. */
+  static readonly WHATSAPP_INVITES_PER_DAY = 10;
+
+  /**
+   * Creates a counsellor invitation to share on WhatsApp. The app opens WhatsApp with a message containing the
+   * link; nothing is sent from the server. A counsellor's invitation needs an administrator's approval after it
+   * is accepted; an administrator's invitation grants the counsellor role as soon as it is accepted.
+   */
+  async inviteCounsellorByWhatsApp(actor: AuthenticatedUser, input: { phoneNumber: string; name?: string; topicIds?: string[] }) {
+    const phoneNumber = toWhatsAppNumber(input.phoneNumber);
+    if (!phoneNumber) throw new BadRequestException('Enter a valid WhatsApp number, for example 0803 123 4567 or +234 803 123 4567.');
+    const isAdmin = actor.role === UserRole.ADMIN || actor.role === UserRole.SUPER_ADMIN;
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const recent = await this.prisma.counsellorInvitation.count({ where: { invitedById: actor.id, channel: 'WHATSAPP', createdAt: { gte: since } } });
+    if (recent >= AdminService.WHATSAPP_INVITES_PER_DAY) throw new BadRequestException(`You can send up to ${AdminService.WHATSAPP_INVITES_PER_DAY} WhatsApp invitations a day. Please try again tomorrow.`);
+
+    let topicIds: string[];
+    if (isAdmin) {
+      const requested = [...new Set(input.topicIds ?? [])];
+      const topics = await this.prisma.counsellingTopic.findMany({ where: { id: { in: requested }, isActive: true }, select: { id: true } });
+      if (!requested.length || topics.length !== requested.length) throw new BadRequestException('Select at least one valid active counselling topic.');
+      topicIds = requested;
+    } else {
+      // A counsellor invites someone to help with the same topics they cover; an administrator can change this.
+      const profile = await this.prisma.counsellorProfile.findUnique({ where: { userId: actor.id }, select: { topics: { where: { topic: { isActive: true } }, select: { topicId: true } } } });
+      if (!profile) throw new ForbiddenException('Only counsellors and administrators can invite counsellors.');
+      topicIds = profile.topics.map((item) => item.topicId);
+    }
+
+    const rawToken = randomBytes(32).toString('base64url');
+    const tokenHash = createHash('sha256').update(rawToken).digest('hex');
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    const invitation = await this.prisma.counsellorInvitation.create({ data: {
+      channel: 'WHATSAPP', phoneNumber, inviteeName: input.name?.trim() || null, tokenHash, topicIds,
+      invitedById: actor.id, requiresApproval: !isAdmin, expiresAt,
+    } });
+    await this.prisma.auditLog.create({ data: { actorId: actor.id, action: 'COUNSELLOR_INVITED_WHATSAPP', entityType: 'CounsellorInvitation', entityId: invitation.id, metadata: { requiresApproval: !isAdmin, topicCount: topicIds.length } } });
+    return {
+      token: rawToken,
+      /** Public page that opens the invitation in the app; WhatsApp only makes https links tappable. */
+      invitePath: `/invite/${rawToken}`,
+      whatsappNumber: phoneNumber,
+      expiresAt: expiresAt.toISOString(),
+      requiresApproval: !isAdmin,
+      message: isAdmin ? 'Invitation ready to share. It expires in seven days.' : 'Invitation ready to share. After they accept it, an administrator approves them before they can take discussions.',
+    };
+  }
+
+  /** Grants the counsellor role with the invitation's topics. Runs inside the caller's transaction. */
+  private async grantCounsellorRole(tx: Prisma.TransactionClient, userId: string, topicIds: string[], assignedById: string) {
+    const updated = await tx.user.update({ where: { id: userId }, data: { role: UserRole.COUNSELLOR }, select: { id: true, email: true, role: true } });
+    const profile = await tx.counsellorProfile.upsert({ where: { userId }, create: { userId, availability: CounsellorAvailability.OFFLINE }, update: {} });
+    await tx.counsellorTopicAssignment.deleteMany({ where: { counsellorId: profile.id } });
+    if (topicIds.length) await tx.counsellorTopicAssignment.createMany({ data: topicIds.map(topicId => ({ counsellorId: profile.id, topicId, assignedById })) });
+    return updated;
+  }
+
+  private invitationTopicIds(invitation: { topicIds: Prisma.JsonValue }): string[] {
+    return Array.isArray(invitation.topicIds) ? invitation.topicIds.filter((id): id is string => typeof id === 'string') : [];
+  }
+
   async acceptCounsellorInvitation(user: AuthenticatedUser, rawToken: string) {
     const tokenHash = createHash('sha256').update(rawToken).digest('hex');
     const invitation = await this.prisma.counsellorInvitation.findUnique({ where: { tokenHash } });
     if (!invitation || invitation.acceptedAt || invitation.expiresAt <= new Date()) throw new BadRequestException('This invitation is invalid, expired or already used.');
-    if (invitation.email.toLowerCase() !== user.email.toLowerCase()) throw new ForbiddenException('Sign in with the email address this invitation was sent to.');
-    const topicIds = Array.isArray(invitation.topicIds) ? invitation.topicIds.filter((id): id is string => typeof id === 'string') : [];
+    // Email invitations must be accepted by the account they were sent to. WhatsApp invitations are not tied to an
+    // email address, so a counsellor's one is checked by an administrator instead.
+    if (invitation.email && invitation.email.toLowerCase() !== user.email.toLowerCase()) throw new ForbiddenException('Sign in with the email address this invitation was sent to.');
+    if (invitation.invitedById === user.id) throw new ForbiddenException('You cannot accept an invitation you sent yourself.');
+    if (invitation.requiresApproval && user.role === UserRole.COUNSELLOR) throw new BadRequestException('Your account is already a counsellor account.');
+    const topicIds = this.invitationTopicIds(invitation);
     const validTopics = await this.prisma.counsellingTopic.findMany({ where: { id: { in: topicIds }, isActive: true }, select: { id: true } });
+
+    if (invitation.requiresApproval) {
+      return this.prisma.$transaction(async tx => {
+        const consumed = await tx.counsellorInvitation.updateMany({ where: { id: invitation.id, acceptedAt: null, expiresAt: { gt: new Date() } }, data: { acceptedAt: new Date(), acceptedById: user.id } });
+        if (consumed.count !== 1) throw new BadRequestException('This invitation has already been used or expired.');
+        const admins = await tx.user.findMany({ where: { role: { in: [UserRole.ADMIN, UserRole.SUPER_ADMIN] }, status: UserStatus.ACTIVE }, select: { id: true } });
+        for (const admin of admins) await createNotification(tx, admin.id, 'Counsellor request to review', `${user.email} accepted a counsellor invitation shared on WhatsApp. Approve or decline it in Admin > Counselling.`, 'COUNSELLOR');
+        await createNotification(tx, invitation.invitedById, 'Invitation accepted', `${user.email} accepted your counsellor invitation. An administrator will review it.`, 'COUNSELLOR');
+        await createNotification(tx, user.id, 'Request sent for approval', 'Thank you. An administrator will review your counsellor request. You will be notified here when it is approved.', 'COUNSELLOR');
+        await tx.auditLog.create({ data: { actorId: user.id, action: 'COUNSELLOR_INVITATION_ACCEPTED_PENDING', entityType: 'CounsellorInvitation', entityId: invitation.id, metadata: { invitedById: invitation.invitedById } } });
+        return { id: user.id, email: user.email, role: user.role, status: 'PENDING_APPROVAL' as const, message: 'Request sent. An administrator will review it, and you will be notified when you are approved.' };
+      });
+    }
+
     if (!topicIds.length || validTopics.length !== topicIds.length) throw new BadRequestException('The invitation topics are no longer available. Contact an administrator.');
     return this.prisma.$transaction(async tx => {
-      const consumed = await tx.counsellorInvitation.updateMany({ where: { id: invitation.id, acceptedAt: null, expiresAt: { gt: new Date() } }, data: { acceptedAt: new Date() } });
+      const consumed = await tx.counsellorInvitation.updateMany({ where: { id: invitation.id, acceptedAt: null, expiresAt: { gt: new Date() } }, data: { acceptedAt: new Date(), acceptedById: user.id, approvedAt: new Date() } });
       if (consumed.count !== 1) throw new BadRequestException('This invitation has already been used or expired.');
-      const updated = await tx.user.update({ where: { id: user.id }, data: { role: UserRole.COUNSELLOR }, select: { id: true, email: true, role: true } });
-      const profile = await tx.counsellorProfile.upsert({ where: { userId: user.id }, create: { userId: user.id, availability: CounsellorAvailability.OFFLINE }, update: {} });
-      await tx.counsellorTopicAssignment.deleteMany({ where: { counsellorId: profile.id } });
-      await tx.counsellorTopicAssignment.createMany({ data: topicIds.map(topicId => ({ counsellorId: profile.id, topicId, assignedById: invitation.invitedById })) });
+      const updated = await this.grantCounsellorRole(tx, user.id, topicIds, invitation.invitedById);
       await tx.auditLog.create({ data: { actorId: user.id, action: 'COUNSELLOR_INVITATION_ACCEPTED', entityType: 'User', entityId: user.id, metadata: { invitedById: invitation.invitedById, topicIds } } });
       await createNotification(tx, user.id, 'Welcome, counsellor', 'Your invitation was accepted. Set your availability to Available when you are ready to receive discussions.', 'COUNSELLOR');
       await createNotification(tx, invitation.invitedById, 'Counsellor invitation accepted', `${user.email} accepted the counsellor invitation.`, 'COUNSELLOR');
-      return updated;
+      return { ...updated, status: 'APPROVED' as const, message: 'You are now a counsellor.' };
+    });
+  }
+
+  /** Counsellor requests waiting for an administrator: WhatsApp invitations from counsellors that were accepted. */
+  async listCounsellorRequests() {
+    const requests = await this.prisma.counsellorInvitation.findMany({
+      where: { requiresApproval: true, acceptedAt: { not: null }, approvedAt: null, declinedAt: null },
+      orderBy: { acceptedAt: 'asc' },
+      select: { id: true, phoneNumber: true, inviteeName: true, topicIds: true, invitedById: true, acceptedById: true, acceptedAt: true },
+    });
+    const userIds = [...new Set(requests.flatMap((item) => [item.invitedById, item.acceptedById].filter((id): id is string => !!id)))];
+    const topicIds = [...new Set(requests.flatMap((item) => this.invitationTopicIds(item)))];
+    const [people, topics] = await Promise.all([
+      this.prisma.user.findMany({ where: { id: { in: userIds } }, select: { id: true, displayName: true, email: true } }),
+      this.prisma.counsellingTopic.findMany({ where: { id: { in: topicIds } }, select: { id: true, name: true } }),
+    ]);
+    const person = (id: string | null) => people.find((item) => item.id === id) ?? null;
+    return requests.map((item) => ({
+      id: item.id,
+      phoneNumber: item.phoneNumber,
+      inviteeName: item.inviteeName,
+      acceptedAt: item.acceptedAt,
+      invitedBy: person(item.invitedById),
+      applicant: person(item.acceptedById),
+      topics: topics.filter((topic) => this.invitationTopicIds(item).includes(topic.id)),
+    }));
+  }
+
+  async approveCounsellorRequest(actor: AuthenticatedUser, id: string) {
+    const request = await this.prisma.counsellorInvitation.findUnique({ where: { id } });
+    if (!request || !request.requiresApproval || !request.acceptedAt || !request.acceptedById || request.approvedAt || request.declinedAt) throw new NotFoundException('This counsellor request was not found or has already been decided.');
+    const applicant = await this.prisma.user.findUnique({ where: { id: request.acceptedById }, select: { id: true, email: true, role: true, status: true } });
+    if (!applicant || applicant.status !== UserStatus.ACTIVE) throw new BadRequestException('This account is not active, so it cannot become a counsellor.');
+    if (applicant.role !== UserRole.MEMBER) throw new BadRequestException('Only member accounts can be approved as counsellors.');
+    const topics = await this.prisma.counsellingTopic.findMany({ where: { id: { in: this.invitationTopicIds(request) }, isActive: true }, select: { id: true } });
+    const topicIds = topics.map((topic) => topic.id);
+    return this.prisma.$transaction(async tx => {
+      const decided = await tx.counsellorInvitation.updateMany({ where: { id, approvedAt: null, declinedAt: null }, data: { approvedAt: new Date(), approvedById: actor.id } });
+      if (decided.count !== 1) throw new BadRequestException('This counsellor request has already been decided.');
+      await this.grantCounsellorRole(tx, applicant.id, topicIds, actor.id);
+      await createNotification(tx, applicant.id, 'You are now a counsellor', 'An administrator approved your counsellor request. Open the app again to see your counsellor workspace, then set yourself to Available when you are ready.', 'COUNSELLOR');
+      await createNotification(tx, request.invitedById, 'Counsellor approved', `${applicant.email}, whom you invited, is now a counsellor.`, 'COUNSELLOR');
+      await tx.auditLog.create({ data: { actorId: actor.id, action: 'COUNSELLOR_REQUEST_APPROVED', entityType: 'User', entityId: applicant.id, metadata: { invitationId: id, topicIds } } });
+      return { success: true, topicsAssigned: topicIds.length };
+    });
+  }
+
+  async declineCounsellorRequest(actor: AuthenticatedUser, id: string) {
+    const request = await this.prisma.counsellorInvitation.findUnique({ where: { id } });
+    if (!request || !request.requiresApproval || !request.acceptedAt || request.approvedAt || request.declinedAt) throw new NotFoundException('This counsellor request was not found or has already been decided.');
+    return this.prisma.$transaction(async tx => {
+      const decided = await tx.counsellorInvitation.updateMany({ where: { id, approvedAt: null, declinedAt: null }, data: { declinedAt: new Date(), approvedById: actor.id } });
+      if (decided.count !== 1) throw new BadRequestException('This counsellor request has already been decided.');
+      if (request.acceptedById) await createNotification(tx, request.acceptedById, 'Counsellor request not approved', 'An administrator reviewed your counsellor request and did not approve it. Contact the person who invited you if you have questions.', 'COUNSELLOR');
+      await createNotification(tx, request.invitedById, 'Counsellor request declined', 'An administrator declined a counsellor invitation you shared.', 'COUNSELLOR');
+      await tx.auditLog.create({ data: { actorId: actor.id, action: 'COUNSELLOR_REQUEST_DECLINED', entityType: 'CounsellorInvitation', entityId: id, metadata: {} } });
+      return { success: true };
     });
   }
 

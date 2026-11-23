@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
-import { Alert, Linking, Share, Text, View } from "react-native";
+import { Linking, Share, Text, View } from "react-native";
+import { AppAlert } from "@/src/lib/alert";
 import { Ionicons } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
 import { Screen, Button, Card, Pill, EmptyState, LoadingBlock } from "@/src/components/UI";
@@ -88,7 +89,7 @@ export default function ContentDetail() {
       if (!/^https?:\/\//i.test(url)) throw new Error("unsupported");
       await Linking.openURL(url);
     } catch {
-      Alert.alert("Link could not be opened", "Copy the address and open it in your browser instead.");
+      AppAlert.alert("Link could not be opened", "Copy the address and open it in your browser instead.");
     }
   };
 

@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { Alert, Image, Pressable, Text, View } from "react-native";
+import { Image, Pressable, Text, View } from "react-native";
+import { AppAlert } from "@/src/lib/alert";
 import { Ionicons } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
 import { Screen, Button, Card, Field, BackLink, StepProgress, OptionCard, Heading, ErrorState, LoadingBlock } from "@/src/components/UI";
@@ -32,7 +33,7 @@ export default function RegisterBiodata() {
     } catch (error) {
       const message = error instanceof Error ? error.message : "Please check your connection and try again.";
       setCategoriesError(message);
-      Alert.alert("Unable to load account types", message);
+      AppAlert.alert("Unable to load account types", message);
     } finally {
       setCategoriesLoading(false);
     }
@@ -61,13 +62,14 @@ export default function RegisterBiodata() {
     if (password.length < 8) fail("password", "Password too short", "Use at least 8 characters.", "Use at least 8 characters.");
     else if (password !== confirm) fail("confirm", "Passwords don't match", "Re-enter the same password in both fields.", "The passwords do not match.");
     setErrors(next);
-    if (alertTitle) return Alert.alert(alertTitle, alertBody);
+    if (alertTitle) return AppAlert.alert(alertTitle, alertBody);
 
     setBusy(true);
     try {
-      const result = await apiRegister({ email: email.trim(), password, displayName: name.trim(), phoneNumber: whatsapp.trim(), dateOfBirth: dob, stateOfResidence: String(p.state || ""), lga: String(p.lga || ""), lcda: String(p.lcda || ""), school: school.trim() || undefined, nin, categoryId, subcategoryId });
-      Alert.alert("Registration submitted", result.message || "Your account has been created. Check your email to verify your address before signing in.", [{ text: "Continue to sign in", onPress: () => router.replace("/auth?mode=signin") }]);
-    } catch (error) { Alert.alert("Registration failed", error instanceof Error ? error.message : "We could not create your account. Please try again."); }
+      await apiRegister({ email: email.trim(), password, displayName: name.trim(), phoneNumber: whatsapp.trim(), dateOfBirth: dob, stateOfResidence: String(p.state || ""), lga: String(p.lga || ""), lcda: String(p.lcda || ""), school: school.trim() || undefined, nin, categoryId, subcategoryId });
+      // Straight to the "Check your inbox (or Spam)" step, so the verification email isn't missed.
+      router.replace({ pathname: "/check-email", params: { email: email.trim().toLowerCase() } });
+    } catch (error) { AppAlert.alert("Registration failed", error instanceof Error ? error.message : "We could not create your account. Please try again."); }
     finally { setBusy(false); }
   };
 

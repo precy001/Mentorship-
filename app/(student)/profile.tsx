@@ -1,9 +1,11 @@
 import React, { useEffect, useState } from "react";
-import { Alert, Pressable, Text, View } from "react-native";
+import { Pressable, Text, View } from "react-native";
+import { AppAlert } from "@/src/lib/alert";
 import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import { router } from "expo-router";
-import { Screen, Heading, Card, Button, Avatar, Pill, Divider, InfoRow, Chip, SectionHeader, StatTile, ListGroup, ListRow } from "@/src/components/UI";
+import { Screen, Heading, Card, Button, Avatar, Pill, Divider, InfoRow, Chip, SectionHeader, StatTile, ListGroup, ListRow, BackLink } from "@/src/components/UI";
+import { backToHome } from "@/src/lib/routes";
 import { useApp } from "@/src/context/AppContext";
 import { colors } from "@/src/lib/theme";
 import { apiGetMembershipCategories, apiUpdateMembership, apiUpdateProfile, apiUploadProfilePicture, MembershipCategory } from "@/src/lib/api";
@@ -18,14 +20,14 @@ export default function Profile() {
   const [categoryId, setCategoryId] = useState(app.user?.categoryId || "");
   const [subcategoryId, setSubcategoryId] = useState(app.user?.subcategoryId || "");
   const [savingMembership, setSavingMembership] = useState(false);
-  useEffect(() => { apiGetMembershipCategories().then(setCategories).catch(error => Alert.alert("Membership options unavailable", error instanceof Error ? error.message : "Please try again.")); }, []);
+  useEffect(() => { apiGetMembershipCategories().then(setCategories).catch(error => AppAlert.alert("Membership options unavailable", error instanceof Error ? error.message : "Please try again.")); }, []);
   const selectedCategory = categories.find(item => item.id === categoryId);
   const selectedSubcategory = selectedCategory?.subcategories.find(item => item.id === subcategoryId);
   const unchanged = categoryId === (app.user?.categoryId || "") && subcategoryId === (app.user?.subcategoryId || "");
   const saveMembership = async () => {
-    if (!selectedCategory || !selectedSubcategory) return Alert.alert("Choose your membership", "Select a category and a matching subcategory.");
-    try { setSavingMembership(true); await apiUpdateMembership(categoryId, subcategoryId); app.updateMembership({ categoryId, categoryName: selectedCategory.name, categorySlug: selectedCategory.slug, subcategoryId, subcategoryName: selectedSubcategory.name, subcategorySlug: selectedSubcategory.slug }); Alert.alert("Membership updated", "Your dashboard will now reflect your selected category."); }
-    catch (error) { Alert.alert("Update failed", error instanceof Error ? error.message : "Your membership could not be updated."); }
+    if (!selectedCategory || !selectedSubcategory) return AppAlert.alert("Choose your membership", "Select a category and a matching subcategory.");
+    try { setSavingMembership(true); await apiUpdateMembership(categoryId, subcategoryId); app.updateMembership({ categoryId, categoryName: selectedCategory.name, categorySlug: selectedCategory.slug, subcategoryId, subcategoryName: selectedSubcategory.name, subcategorySlug: selectedSubcategory.slug }); AppAlert.alert("Membership updated", "Your dashboard will now reflect your selected category."); }
+    catch (error) { AppAlert.alert("Update failed", error instanceof Error ? error.message : "Your membership could not be updated."); }
     finally { setSavingMembership(false); }
   };
   const [name, setName] = useState(app.user?.name || "");
@@ -67,9 +69,9 @@ export default function Profile() {
       setSavingDetails(true);
       app.applyAccount(await apiUpdateProfile(changes));
       setShowDetailErrors(false);
-      Alert.alert("Profile saved", "Your details have been updated.");
+      AppAlert.alert("Profile saved", "Your details have been updated.");
     } catch (error) {
-      Alert.alert("Could not save", error instanceof Error ? error.message : "Please try again.");
+      AppAlert.alert("Could not save", error instanceof Error ? error.message : "Please try again.");
     } finally { setSavingDetails(false); }
   };
 
@@ -77,7 +79,7 @@ export default function Profile() {
     if (uploading) return;
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) {
-      Alert.alert("Photo access needed", "Allow Mentorship+ to access your photo library to choose a profile picture.");
+      AppAlert.alert("Photo access needed", "Allow Mentorship+ to access your photo library to choose a profile picture.");
       return;
     }
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -90,16 +92,16 @@ export default function Profile() {
     const asset = result.assets[0];
     const mimeType = asset.mimeType || "image/jpeg";
     if (!["image/jpeg", "image/png", "image/webp"].includes(mimeType)) {
-      Alert.alert("Unsupported image", "Choose a JPG, PNG, or WebP image.");
+      AppAlert.alert("Unsupported image", "Choose a JPG, PNG, or WebP image.");
       return;
     }
     setUploading(true);
     try {
       const uploaded = await apiUploadProfilePicture(asset.uri, mimeType);
       app.updateAvatar(uploaded.avatarUrl);
-      Alert.alert("Profile picture updated", "Your new picture is saved to your account.");
+      AppAlert.alert("Profile picture updated", "Your new picture is saved to your account.");
     } catch (error) {
-      Alert.alert("Upload failed", error instanceof Error ? error.message : "Your picture could not be uploaded. Please try again.");
+      AppAlert.alert("Upload failed", error instanceof Error ? error.message : "Your picture could not be uploaded. Please try again.");
     } finally {
       setUploading(false);
     }
@@ -116,6 +118,7 @@ export default function Profile() {
 
   return (
     <Screen tabBar>
+      <BackLink onPress={backToHome} />
       <Heading title="Your profile" subtitle="Manage your account and personal settings." />
 
       <Card>
@@ -181,7 +184,7 @@ export default function Profile() {
         <ListRow icon="help-circle-outline" title="Help & frequently asked questions" last onPress={() => router.push({ pathname: "/feature/[slug]", params: { slug: "help" } })} />
       </ListGroup>
 
-      <Button title="Log out" icon="log-out-outline" variant="dangerSoft" onPress={() => Alert.alert("Log out?", "You will be signed out of your account on this device.", [{ text: "Cancel", style: "cancel" }, { text: "Log out", style: "destructive", onPress: async () => { await app.logout(); /* returns to sign-in automatically (app/_layout.tsx) */ } }])} />
+      <Button title="Log out" icon="log-out-outline" variant="dangerSoft" onPress={() => AppAlert.alert("Log out?", "You will be signed out of your account on this device.", [{ text: "Cancel", style: "cancel" }, { text: "Log out", style: "destructive", onPress: async () => { await app.logout(); /* returns to sign-in automatically (app/_layout.tsx) */ } }])} />
     </Screen>
   );
 }

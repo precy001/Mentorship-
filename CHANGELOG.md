@@ -1,4 +1,63 @@
-# Changelog — grants, audience targeting, NIN, insights fix and UX improvements
+# Changelog — back buttons, WhatsApp counsellor invitations, check-your-inbox step, custom dialogs, grants, NIN and more
+
+## Latest additions
+### Back button on every screen
+- Explore, Support, Activities and Profile now have a Back link (it returns to the previous screen, or Home).
+- The sign-in screen always shows Back. When nothing is behind it (after signing out, or when opened from an email
+  link), it opens the welcome screen.
+- Each admin section (Accounts, Counselling, Resources, Scholarships, Grants, Platform) has "‹ Overview", and Android
+  Back on a section returns to the Overview.
+- The four starting screens (welcome, member Home, counsellor workspace, admin Overview) have no Back, because there
+  is nothing before them. Android Back there leaves the app, as usual.
+
+### Counsellors can invite counsellors on WhatsApp
+- The counsellor workspace has a new "Invite a counsellor" card: enter their WhatsApp number (and optionally their
+  name), tap **Invite on WhatsApp**, and WhatsApp opens with a ready-written message to that number. Tap Send.
+- The message has a private https link (WhatsApp only makes https links tappable). It opens a small Mentorship+ web
+  page with an **Open in Mentorship+** button that opens the invitation in the app.
+- **Safety:** someone invited by a counsellor becomes a counsellor only after an administrator approves them.
+  - Admin → Counselling has a **Counsellor requests** list (also counted under "Needs your attention"), with
+    Approve and Decline.
+  - Approval gives them the inviting counsellor's topics.
+  - Everyone involved gets an in-app notification.
+  - Limits: 10 invitations per person per day; invitations expire after 7 days; you can't accept your own.
+- After approval, the new counsellor's app switches to the counsellor workspace the next time it's opened. They don't
+  need to sign out. The app now reloads the account when it comes back to the foreground, at most once a minute.
+- Email invitations from admins work exactly as before. When an emailed invitation is accepted, the app now goes
+  straight to the counsellor workspace instead of asking the person to sign in again.
+- API: `POST /admin/counsellors/invitations/whatsapp` (counsellors and admins), `GET /admin/counsellors/requests`,
+  `POST /admin/counsellors/requests/:id/approve|decline` (admins), and the public page `GET /invite/:token`.
+- Migration `20261123190000_counsellor_whatsapp_invites` (additive) extends `CounsellorInvitation`. 11 new API tests
+  (101 in total).
+
+### "Check your inbox or Spam" for new accounts
+- After registering, people now land on a **Check your inbox** screen. It shows their email address, a clear
+  "Can't see it? Check your Spam or Junk folder" box (with Gmail tips), a Resend button (once a minute), Open Mail
+  (iPhone), "I've verified — sign in", and "Used the wrong email? Register again".
+- Trying to sign in before verifying shows "Verify your email first", with the Spam reminder and a Resend option.
+- Every "resend verification" confirmation now also reminds people to check Spam or Junk.
+
+---
+
+
+## Custom dialogs (latest)
+- Every pop-up in the app (all 84 of them: success, errors, warnings, confirmations such as Log out?) now uses one
+  Mentorship+ dialog instead of the system alert box. It looks the same on Android and iPhone: icon, title,
+  message and rounded buttons.
+- Colour and icon follow the event: green tick for success, red for errors, amber for "please check" messages,
+  blue question mark for confirmations, and red warning with a red button for destructive actions such as log out
+  or delete.
+- Buttons keep exactly the same actions as before. Cancel sits on the left (or last when stacked). Android Back
+  presses Cancel; tapping outside closes the dialog only where that was allowed before.
+- If two messages arrive together, they show one after the other.
+- New files: `src/lib/alert.ts` (the `AppAlert.alert(...)` call, same shape as before), `src/components/AlertHost.tsx`
+  (the dialog, mounted once in `app/_layout.tsx`) and `src/lib/alert.test.ts`. `src/lib/feedback.ts`
+  (confirmations) and every screen that showed a pop-up were switched over. No new dependencies.
+
+This ZIP is cumulative: it also contains everything from the grants/NIN/audit update below.
+
+---
+
 
 ## API (`api/`)
 - **New `Grant` model** (`prisma/schema.prisma`) with optional amount, optional deadline (open all year), eligibility,

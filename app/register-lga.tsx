@@ -1,5 +1,6 @@
 import React, { useCallback, useMemo, useRef, useState } from "react";
-import { Alert, Pressable, Text, View } from "react-native";
+import { Pressable, Text, View } from "react-native";
+import { AppAlert } from "@/src/lib/alert";
 import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect } from "expo-router";
 import { Screen, Button, Card, BackLink, Heading, StepProgress, ErrorState, LoadingBlock, EmptyState, SearchField } from "@/src/components/UI";
@@ -82,15 +83,15 @@ export default function RegisterLga() {
 
   const continueNext = () => {
     if (!chosen) {
-      Alert.alert("Choose your LGA", "Select the Local Government Area where you reside.");
+      AppAlert.alert("Choose your LGA", "Select the Local Government Area where you reside.");
       return;
     }
     if (!validLcda || !selectedLcda) {
-      Alert.alert("Choose your LCDA", "Select one of the LCDA options shown for your LGA.");
+      AppAlert.alert("Choose your LCDA", "Select one of the LCDA options shown for your LGA.");
       return;
     }
     if (!confirmed) {
-      Alert.alert("Confirm your LCDA", "Please confirm that the selected LGA/LCDA is correct.");
+      AppAlert.alert("Confirm your LCDA", "Please confirm that the selected LGA/LCDA is correct.");
       return;
     }
 

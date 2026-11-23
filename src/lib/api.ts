@@ -557,7 +557,17 @@ export const apiCreateAppointment = (input: { topicId: string; startsAt: string;
 export const apiUpdateAppointmentStatus = (id: string, status: "CONFIRMED" | "COMPLETED" | "CANCELLED" | "NO_SHOW") => apiRequest<AppointmentRecord>(`/appointments/${encodeURIComponent(id)}/status`, { method: "PATCH", body: JSON.stringify({ status }) }, true);
 export const apiAdminSetAccountStatus = (userId: string, status: "ACTIVE" | "SUSPENDED" | "DEACTIVATED") => apiRequest(`/admin/users/${encodeURIComponent(userId)}/status`, { method: "PATCH", body: JSON.stringify({ status }) }, true);
 export const apiAdminInviteCounsellor = (email: string, topicIds: string[]) => apiRequest<{ message: string }>("/admin/counsellors/invitations", { method: "POST", body: JSON.stringify({ email: email.trim().toLowerCase(), topicIds }) }, true);
-export const apiAcceptCounsellorInvitation = (token: string) => apiRequest<{ id: string; email: string; role: string }>("/admin/counsellors/invitations/accept", { method: "POST", body: JSON.stringify({ token }) }, true);
+/** `status` is PENDING_APPROVAL when a counsellor shared the invitation (an administrator approves it next). */
+export const apiAcceptCounsellorInvitation = (token: string) => apiRequest<{ id: string; email: string; role: string; status?: "APPROVED" | "PENDING_APPROVAL"; message?: string }>("/admin/counsellors/invitations/accept", { method: "POST", body: JSON.stringify({ token }) }, true);
+export type WhatsAppInvitation = { token: string; invitePath: string; whatsappNumber: string; expiresAt: string; requiresApproval: boolean; message: string };
+/** Creates a counsellor invitation to share from the person's own WhatsApp. */
+export const apiCreateWhatsAppInvitation = (input: { phoneNumber: string; name?: string; topicIds?: string[] }) => apiRequest<WhatsAppInvitation>("/admin/counsellors/invitations/whatsapp", { method: "POST", body: JSON.stringify(input) }, true);
+/** Public https page for an invitation (WhatsApp only makes https links tappable); it opens the app. */
+export const invitationLink = (invitePath: string) => `${API_BASE_URL.replace(/\/$/, "")}${invitePath}`;
+export type CounsellorRequest = { id: string; phoneNumber: string | null; inviteeName: string | null; acceptedAt: string; invitedBy: { id: string; displayName: string | null; email: string } | null; applicant: { id: string; displayName: string | null; email: string } | null; topics: { id: string; name: string }[] };
+export const apiAdminCounsellorRequests = () => apiRequest<CounsellorRequest[]>("/admin/counsellors/requests", {}, true);
+export const apiAdminApproveCounsellorRequest = (id: string) => apiRequest<{ success: boolean; topicsAssigned: number }>(`/admin/counsellors/requests/${encodeURIComponent(id)}/approve`, { method: "POST" }, true);
+export const apiAdminDeclineCounsellorRequest = (id: string) => apiRequest<{ success: boolean }>(`/admin/counsellors/requests/${encodeURIComponent(id)}/decline`, { method: "POST" }, true);
 /** Who an item is for: membership category / subcategory slugs. Both empty = everyone. */
 export type Audience = { audienceCategories: string[]; audienceSubcategories: string[] };
 export type AdminResource = { id: string; title: string; category: string; readTime: string; description: string; imageUrl: string | null; isActive: boolean; createdAt?: string } & Partial<Audience>;

@@ -1,16 +1,17 @@
 import React, { useEffect, useState } from "react";
-import { Alert, Text, View } from "react-native";
+import { Text, View } from "react-native";
+import { AppAlert } from "@/src/lib/alert";
 import { Ionicons } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
 import { Screen, Heading, Card, Button, BackLink, IconBadge } from "@/src/components/UI";
 import { colors } from "@/src/lib/theme";
 import { useApp } from "@/src/context/AppContext";
-import { apiAcceptCounsellorInvitation } from "@/src/lib/api";
+import { apiAcceptCounsellorInvitation, apiMe } from "@/src/lib/api";
 import { leaveScreen } from "@/src/lib/routes";
 
 const POINTS: { icon: React.ComponentProps<typeof Ionicons>["name"]; text: string }[] = [
-  { icon: "mail-outline", text: "The invitation is linked to the email address it was sent to." },
-  { icon: "log-in-outline", text: "You must sign in with that account before accepting it." },
+  { icon: "log-in-outline", text: "Sign in (or create an account) before accepting. An emailed invitation must be accepted with the email address it was sent to." },
+  { icon: "logo-whatsapp", text: "An invitation a counsellor shared on WhatsApp is reviewed by an administrator before you can take discussions." },
   { icon: "time-outline", text: "Invitations expire after seven days." },
 ];
 
@@ -20,15 +21,25 @@ export default function CounsellorInvite() {
   const [working, setWorking] = useState(false);
   const [finished, setFinished] = useState(false);
   const accept = async () => {
-    if (!token || typeof token !== "string") return Alert.alert("Invalid invitation", "The invitation link does not contain a valid token.");
-    if (!app.user) return Alert.alert("Sign in required", "Sign in using the email address this invitation was sent to, then open the invitation link again.");
+    if (!token || typeof token !== "string") return AppAlert.alert("Invalid invitation", "The invitation link does not contain a valid token.");
+    if (!app.user) return AppAlert.alert("Sign in required", "Sign in or create an account first, then open the invitation link again.");
     try {
       setWorking(true);
       const result = await apiAcceptCounsellorInvitation(token);
       setFinished(true);
-      await app.logout();
-      Alert.alert("Invitation accepted", `${result.email} is now a counsellor. Sign in again to open the counsellor workspace.`, [{ text: "Sign in", onPress: () => router.replace({ pathname: "/auth", params: { mode: "signin" } }) }]);
-    } catch (error) { Alert.alert("Invitation could not be accepted", error instanceof Error ? error.message : "Please contact the administrator who invited you."); }
+      if (result.status === "PENDING_APPROVAL") {
+        AppAlert.alert("Request sent", result.message || "An administrator will review your request. You'll be notified when it's approved.", [{ text: "OK", onPress: () => leaveScreen(app.user?.role) }]);
+        return;
+      }
+      // Reload the account: the app switches to the counsellor workspace by itself (app/_layout.tsx).
+      try {
+        app.applyAccount(await apiMe());
+        AppAlert.alert("Invitation accepted", "You are now a counsellor. Set yourself to Available when you're ready to receive discussions.", [{ text: "Open workspace", onPress: () => router.replace("/(counsellor)") }]);
+      } catch {
+        await app.logout();
+        AppAlert.alert("Invitation accepted", `${result.email} is now a counsellor. Sign in again to open the counsellor workspace.`, [{ text: "Sign in", onPress: () => router.replace({ pathname: "/auth", params: { mode: "signin" } }) }]);
+      }
+    } catch (error) { AppAlert.alert("Invitation could not be accepted", error instanceof Error ? error.message : "Please contact the administrator who invited you."); }
     finally { setWorking(false); }
   };
   useEffect(() => { if (!token) setFinished(true); }, [token]);

@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Alert, Text, View } from "react-native";
+import { ActivityIndicator, Text, View } from "react-native";
+import { AppAlert } from "@/src/lib/alert";
 import { Ionicons } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
 import { Screen, Heading, Button, Card, Field, BackLink, IconBadge } from "@/src/components/UI";
@@ -59,7 +60,7 @@ export default function VerifyEmailScreen() {
   const verifyPasted = () => {
     const value = token.trim();
     if (value.length < MIN_TOKEN_LENGTH) {
-      Alert.alert("Verification link needed", "Open the verification link from your email or paste its token here.");
+      AppAlert.alert("Verification link needed", "Open the verification link from your email or paste its token here.");
       return;
     }
     void runVerification(value);
@@ -68,15 +69,15 @@ export default function VerifyEmailScreen() {
   const resend = async () => {
     const normalizedEmail = email.trim().toLowerCase();
     if (!/^\S+@\S+\.\S+$/.test(normalizedEmail)) {
-      Alert.alert("Check your email", "Enter the email address you registered with.");
+      AppAlert.alert("Check your email", "Enter the email address you registered with.");
       return;
     }
     setResending(true);
     try {
       const result = await apiResendVerification(normalizedEmail);
-      Alert.alert("Check your inbox", result.message);
+      AppAlert.alert("Check your inbox", `${result.message}\n\nCan't see it? Check your Spam or Junk folder too.`);
     } catch (error) {
-      Alert.alert("Unable to resend link", error instanceof Error ? error.message : "Please try again shortly.");
+      AppAlert.alert("Unable to resend link", error instanceof Error ? error.message : "Please try again shortly.");
     } finally {
       setResending(false);
     }

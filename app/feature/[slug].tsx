@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
-import { Alert, Pressable, Text, View } from "react-native";
+import { Pressable, Text, View } from "react-native";
+import { AppAlert } from "@/src/lib/alert";
 import { Ionicons } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
 import { Screen, Heading, Card, Button, Field, Pill, BackLink, SectionHeader, OptionCard, Chip, EmptyState, StarRating, IconBadge } from "@/src/components/UI";
@@ -59,28 +60,28 @@ export default function FeatureScreen() {
       setRemoteNotifications(current => append ? [...current, ...page.items.filter(item => !current.some(existing => existing.id === item.id))] : page.items);
       setNoticesMore(page.hasMore);
       if (!append) void app.refreshNotifications();
-    } catch (error) { Alert.alert("Notifications unavailable", error instanceof Error ? error.message : "Please try again."); }
+    } catch (error) { AppAlert.alert("Notifications unavailable", error instanceof Error ? error.message : "Please try again."); }
     finally { setNoticesLoading(false); }
   };
   useEffect(() => { if (slug === "notifications") void loadNotices(false); }, [slug]);
   const refreshActivities = async () => {
     try {
       setRecords(await apiListActivities());
-    } catch (error) { Alert.alert("Activity data unavailable", error instanceof Error ? error.message : "Please try again."); }
+    } catch (error) { AppAlert.alert("Activity data unavailable", error instanceof Error ? error.message : "Please try again."); }
   };
   useEffect(() => { if (["assessment", "goals", "history"].includes(slug)) void refreshActivities(); }, [slug]);
   // Make sure the latest check-ins are shown even if the app has been open for a while.
   useEffect(() => { if (slug === "wellness") void app.refreshAccountData(); }, [slug]);
   useEffect(() => {
     if (slug !== "history") return;
-    Promise.all([apiListAppointments(), apiMyRatings()]).then(([items, ratings]) => { setAppointments(items); setMyRatings(ratings); }).catch(error => Alert.alert("Appointment history unavailable", error instanceof Error ? error.message : "Please try again."));
+    Promise.all([apiListAppointments(), apiMyRatings()]).then(([items, ratings]) => { setAppointments(items); setMyRatings(ratings); }).catch(error => AppAlert.alert("Appointment history unavailable", error instanceof Error ? error.message : "Please try again."));
   }, [slug]);
   useEffect(() => {
     if (slug !== "booking") return;
     Promise.all([apiDiscussionTopics(), apiListAppointments()]).then(([availableTopics, items]) => {
       setBookingTopics(availableTopics); setAppointments(items);
       setSelectedTopicId(current => availableTopics.some(item => item.id === current) ? current : availableTopics[0]?.id || "");
-    }).catch(error => Alert.alert("Appointments unavailable", error instanceof Error ? error.message : "Please try again."));
+    }).catch(error => AppAlert.alert("Appointments unavailable", error instanceof Error ? error.message : "Please try again."));
   }, [slug]);
   const titleMap: Record<string, string> = { ai: "Automated support", booking: "Appointments", assessment: "Career assessment", wellness: "Wellbeing check-in", goals: "Personal goals", notifications: "Notifications", history: "Activity history", discussion: "Private discussion", saved: "Saved items", resources: "Resources library", career: "Career growth", business: "Business guidance", universities: "Universities", help: "Help & support" };
   const title = titleMap[slug] || "Mentorship+";
@@ -97,38 +98,38 @@ export default function FeatureScreen() {
     const start = new Date(year, month - 1, day, Number(time.slice(0, 2)), Number(time.slice(3, 5)), 0, 0);
     const calendarDateValid = /^\d{4}-\d{2}-\d{2}$/.test(date) && start.getFullYear() === year && start.getMonth() === month - 1 && start.getDate() === day;
     const end = new Date(start.getTime() + 45 * 60 * 1000);
-    if (!calendarDateValid || !Number.isFinite(start.getTime()) || start <= new Date()) return Alert.alert("Choose a valid time", "Appointments must be requested for a real future date and time.");
-    try { setSaving(true); await apiCreateAppointment({ topicId: selectedTopicId, startsAt: start.toISOString(), endsAt: end.toISOString(), notes: note.trim() || undefined }); setNote(""); const items = await apiListAppointments(); setAppointments(items); await app.refreshAccountData(); Alert.alert("Appointment requested", "Your request has been sent. It will appear as requested until the counsellor confirms it."); }
-    catch (error) { Alert.alert("Appointment not requested", error instanceof Error ? error.message : "Please choose another time."); }
+    if (!calendarDateValid || !Number.isFinite(start.getTime()) || start <= new Date()) return AppAlert.alert("Choose a valid time", "Appointments must be requested for a real future date and time.");
+    try { setSaving(true); await apiCreateAppointment({ topicId: selectedTopicId, startsAt: start.toISOString(), endsAt: end.toISOString(), notes: note.trim() || undefined }); setNote(""); const items = await apiListAppointments(); setAppointments(items); await app.refreshAccountData(); AppAlert.alert("Appointment requested", "Your request has been sent. It will appear as requested until the counsellor confirms it."); }
+    catch (error) { AppAlert.alert("Appointment not requested", error instanceof Error ? error.message : "Please choose another time."); }
     finally { setSaving(false); }
   };
 
-  const cancelAppointment = (item: AppointmentRecord) => Alert.alert("Cancel appointment?", "This will cancel your appointment request.", [{ text: "Keep", style: "cancel" }, { text: "Cancel appointment", style: "destructive", onPress: async () => { try { await apiUpdateAppointmentStatus(item.id, "CANCELLED"); setAppointments(await apiListAppointments()); await app.refreshAccountData(); } catch (error) { Alert.alert("Could not cancel", error instanceof Error ? error.message : "Please try again."); } } }]);
+  const cancelAppointment = (item: AppointmentRecord) => AppAlert.alert("Cancel appointment?", "This will cancel your appointment request.", [{ text: "Keep", style: "cancel" }, { text: "Cancel appointment", style: "destructive", onPress: async () => { try { await apiUpdateAppointmentStatus(item.id, "CANCELLED"); setAppointments(await apiListAppointments()); await app.refreshAccountData(); } catch (error) { AppAlert.alert("Could not cancel", error instanceof Error ? error.message : "Please try again."); } } }]);
 
   const reschedule = async (item: AppointmentRecord, startsAtIso: string, endsAtIso: string) => {
     try {
       setSaving(true);
       await apiRescheduleAppointment(item.id, startsAtIso, endsAtIso);
       setReschedulingId(null); setAppointments(await apiListAppointments()); await app.refreshAccountData();
-      Alert.alert("New time sent", "Your counsellor will be asked to confirm the new time.");
-    } catch (error) { Alert.alert("Could not reschedule", error instanceof Error ? error.message : "Please choose another time."); }
+      AppAlert.alert("New time sent", "Your counsellor will be asked to confirm the new time.");
+    } catch (error) { AppAlert.alert("Could not reschedule", error instanceof Error ? error.message : "Please choose another time."); }
     finally { setSaving(false); }
   };
   const confirmProposedTime = async (item: AppointmentRecord) => {
     try { await apiUpdateAppointmentStatus(item.id, "CONFIRMED"); setAppointments(await apiListAppointments()); await app.refreshAccountData(); }
-    catch (error) { Alert.alert("Could not confirm", error instanceof Error ? error.message : "Please try again."); }
+    catch (error) { AppAlert.alert("Could not confirm", error instanceof Error ? error.message : "Please try again."); }
   };
 
   const saveAssessment = async () => {
     const result = answers.some(item => /people|listening|community|helping/i.test(item)) ? "people-focused paths" : answers.some(item => /analysing|logic|data|research/i.test(item)) ? "analytical and research paths" : "practical and technical paths";
-    try { setSaving(true); await apiCreateActivity("CAREER_ASSESSMENT", { answers, result }); await refreshActivities(); Alert.alert("Assessment saved", `Your responses suggest exploring ${result}. This is a reflection tool, not a validated assessment.`); } catch (error) { Alert.alert("Could not save assessment", error instanceof Error ? error.message : "Please try again."); } finally { setSaving(false); }
+    try { setSaving(true); await apiCreateActivity("CAREER_ASSESSMENT", { answers, result }); await refreshActivities(); AppAlert.alert("Assessment saved", `Your responses suggest exploring ${result}. This is a reflection tool, not a validated assessment.`); } catch (error) { AppAlert.alert("Could not save assessment", error instanceof Error ? error.message : "Please try again."); } finally { setSaving(false); }
   };
 
   // Saved through the shared app state, so the insights here, the profile count and the home screen all update at once.
   const [lastSavedMood, setLastSavedMood] = useState<string | null>(null);
-  const saveCheckin = async () => { try { setSaving(true); await app.addCheckin(mood, note.trim()); setLastSavedMood(mood); setNote(""); } catch (error) { Alert.alert("Could not save check-in", error instanceof Error ? error.message : "Please try again."); } finally { setSaving(false); } };
+  const saveCheckin = async () => { try { setSaving(true); await app.addCheckin(mood, note.trim()); setLastSavedMood(mood); setNote(""); } catch (error) { AppAlert.alert("Could not save check-in", error instanceof Error ? error.message : "Please try again."); } finally { setSaving(false); } };
 
-  const addGoal = async () => { if (!goal.trim()) return Alert.alert("Add a goal", "Enter a short goal first."); try { setSaving(true); await app.addGoal(goal.trim()); setGoal(""); await refreshActivities(); } catch (error) { Alert.alert("Could not save goal", error instanceof Error ? error.message : "Please try again."); } finally { setSaving(false); } };
+  const addGoal = async () => { if (!goal.trim()) return AppAlert.alert("Add a goal", "Enter a short goal first."); try { setSaving(true); await app.addGoal(goal.trim()); setGoal(""); await refreshActivities(); } catch (error) { AppAlert.alert("Could not save goal", error instanceof Error ? error.message : "Please try again."); } finally { setSaving(false); } };
 
   const contentList = app.resources.filter(resource => slug === "resources" || resource.category.toLowerCase().includes(slug));
   const goals = records.filter(record => record.type === "PERSONAL_GOAL");
@@ -244,7 +245,7 @@ export default function FeatureScreen() {
         <Field label="Add a personal goal" value={goal} onChangeText={setGoal} placeholder="e.g. Revise biology for 20 minutes" returnKeyType="done" onSubmitEditing={() => void addGoal()} editable={!saving} />
         <Button title={saving ? "Saving…" : "Add goal"} icon="add" loading={saving} onPress={() => void addGoal()} />
       </Card>
-      {goals.map(record => { const done = record.payload.done === true; const label = String(record.payload.title || "Personal goal"); return <Pressable key={record.id} accessibilityRole="checkbox" accessibilityState={{ checked: done }} accessibilityLabel={label} onPress={async () => { try { await app.toggleGoal(record.id); await refreshActivities(); } catch (error) { Alert.alert("Goal not updated", error instanceof Error ? error.message : "Please try again."); } }}>
+      {goals.map(record => { const done = record.payload.done === true; const label = String(record.payload.title || "Personal goal"); return <Pressable key={record.id} accessibilityRole="checkbox" accessibilityState={{ checked: done }} accessibilityLabel={label} onPress={async () => { try { await app.toggleGoal(record.id); await refreshActivities(); } catch (error) { AppAlert.alert("Goal not updated", error instanceof Error ? error.message : "Please try again."); } }}>
         <Card style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
           <Ionicons name={done ? "checkmark-circle" : "ellipse-outline"} size={26} color={done ? colors.primary : colors.mutedLight} />
           <Text style={{ color: done ? colors.muted : colors.ink, flex: 1, fontWeight: "700", fontSize: 15, textDecorationLine: done ? "line-through" : "none" }}>{label}</Text>
@@ -257,10 +258,10 @@ export default function FeatureScreen() {
     {slug === "notifications" && <>
       <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
         <Text accessibilityLiveRegion="polite" style={{ color: colors.muted, fontSize: 13, flex: 1 }}>{app.unreadCount ? `${app.unreadCount} unread` : "Everything is read"}</Text>
-        {app.unreadCount > 0 ? <Button title="Mark all as read" icon="checkmark-done-outline" variant="secondary" size="sm" onPress={async () => { try { await app.markAllRead(); setRemoteNotifications(current => current.map(item => item.readAt ? item : { ...item, readAt: new Date().toISOString() })); } catch (error) { Alert.alert("Could not update", error instanceof Error ? error.message : "Please try again."); } }} /> : null}
+        {app.unreadCount > 0 ? <Button title="Mark all as read" icon="checkmark-done-outline" variant="secondary" size="sm" onPress={async () => { try { await app.markAllRead(); setRemoteNotifications(current => current.map(item => item.readAt ? item : { ...item, readAt: new Date().toISOString() })); } catch (error) { AppAlert.alert("Could not update", error instanceof Error ? error.message : "Please try again."); } }} /> : null}
       </View>
       {remoteNotifications.map(n => { const target = notificationTarget(n.type); return <Pressable key={n.id} accessibilityRole="button" accessibilityLabel={`${n.title}. ${n.body}. ${n.readAt ? "Read" : "Unread"}`} accessibilityHint={target ? `Opens ${target.label}` : n.readAt ? undefined : "Marks it as read"} onPress={async () => {
-        if (!n.readAt) { try { await app.markRead(n.id); setRemoteNotifications(current => current.map(item => item.id === n.id ? { ...item, readAt: new Date().toISOString() } : item)); } catch (error) { Alert.alert("Notification not updated", error instanceof Error ? error.message : "Please try again."); return; } }
+        if (!n.readAt) { try { await app.markRead(n.id); setRemoteNotifications(current => current.map(item => item.id === n.id ? { ...item, readAt: new Date().toISOString() } : item)); } catch (error) { AppAlert.alert("Notification not updated", error instanceof Error ? error.message : "Please try again."); return; } }
         // Tapping a notification takes members to what it is about.
         target?.open();
       }}>
@@ -290,7 +291,7 @@ export default function FeatureScreen() {
         {item.status === "COMPLETED" && (submitted ? <Text style={{ color: colors.primary, fontWeight: "700" }}>Rating submitted · {submitted.score}/5 · {submitted.moderationStatus.toLowerCase()}</Text> : <>
           <Text style={{ color: colors.ink, fontWeight: "700", fontSize: 13 }}>How was this session?</Text>
           <StarRating value={appointmentScores[item.id] || 0} onChange={score => setAppointmentScores(current => ({ ...current, [item.id]: score }))} label="Rate this appointment" />
-          <Button title="Submit appointment rating" size="sm" disabled={!appointmentScores[item.id]} onPress={async () => { try { await apiCreateRating({ appointmentId: item.id, score: appointmentScores[item.id] }); setMyRatings(await apiMyRatings()); Alert.alert("Rating submitted", "Thank you. Your feedback is pending moderation."); } catch (error) { Alert.alert("Rating not submitted", error instanceof Error ? error.message : "Please try again."); } }} />
+          <Button title="Submit appointment rating" size="sm" disabled={!appointmentScores[item.id]} onPress={async () => { try { await apiCreateRating({ appointmentId: item.id, score: appointmentScores[item.id] }); setMyRatings(await apiMyRatings()); AppAlert.alert("Rating submitted", "Thank you. Your feedback is pending moderation."); } catch (error) { AppAlert.alert("Rating not submitted", error instanceof Error ? error.message : "Please try again."); } }} />
         </>)}
       </Card>; })}
       {!records.length && !appointments.length ? <EmptyState icon="time-outline" title="Nothing here yet" message="Your completed activities and appointments will appear here." /> : null}

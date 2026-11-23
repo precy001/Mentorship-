@@ -4,6 +4,7 @@ import { AppProvider, useApp } from "@/src/context/AppContext";
 import { colors } from "@/src/lib/theme";
 import { isAdminRole } from "@/src/lib/routes";
 import { WelcomeGate } from "@/src/components/WelcomeGate";
+import { AlertHost } from "@/src/components/AlertHost";
 
 export default function RootLayout() {
   return (
@@ -11,6 +12,8 @@ export default function RootLayout() {
       <StatusBar style="dark" />
       <RootNavigator />
       <WelcomeGate />
+      {/* Mentorship+ dialogs, drawn above every screen (replaces the system alert boxes). */}
+      <AlertHost />
     </AppProvider>
   );
 }
@@ -41,6 +44,7 @@ function RootNavigator() {
         <Stack.Screen name="register-lga" options={{ presentation: "card" }} />
         <Stack.Screen name="register-biodata" options={{ presentation: "card" }} />
         <Stack.Screen name="forgot-password" options={{ presentation: "card" }} />
+        <Stack.Screen name="check-email" options={{ presentation: "card" }} />
       </Stack.Protected>
 
       {/* Signed in: each role only has its own home */}

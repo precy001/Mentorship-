@@ -1,5 +1,6 @@
 import React, { useState } from "react";
-import { Alert, View } from "react-native";
+import { View } from "react-native";
+import { AppAlert } from "@/src/lib/alert";
 import { router } from "expo-router";
 import { Screen, Heading, Card, Button, Field, BackLink, IconBadge } from "@/src/components/UI";
 import { apiRequestPasswordReset } from "@/src/lib/api";
@@ -19,11 +20,11 @@ export default function ForgotPassword() {
     setBusy(true);
     try {
       const result = await apiRequestPasswordReset(normalizedEmail);
-      Alert.alert("Check your inbox", result.message, [
+      AppAlert.alert("Check your inbox", result.message, [
         { text: "Back to sign in", onPress: () => router.replace("/auth?mode=signin") },
       ]);
     } catch (caught) {
-      Alert.alert("Unable to submit request", caught instanceof Error ? caught.message : "Please try again.");
+      AppAlert.alert("Unable to submit request", caught instanceof Error ? caught.message : "Please try again.");
     } finally {
       setBusy(false);
     }
