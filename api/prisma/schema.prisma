@@ -76,6 +76,7 @@ model User {
   authTokens         AuthToken[]
   activityRecords    ActivityRecord[]
   notifications      UserNotification[]
+  newsPosts          NewsPost[]
 
   @@index([role, status])
   @@index([createdAt])
@@ -227,11 +228,18 @@ model DiscussionMessage {
   discussionId String
   authorId     String
   body         String   @db.Text
+  /// Id the sending app generates per message, so a retried send cannot create a duplicate. Null for older apps.
+  clientId     String?  @db.VarChar(64)
   createdAt    DateTime @default(now())
   editedAt     DateTime?
+  /// When the other side's app first received the message (two grey ticks). Set together with readAt if it was opened first.
+  deliveredAt  DateTime?
+  /// When the other side opened the conversation with the message in it (two blue ticks).
+  readAt       DateTime?
   discussion   Discussion @relation(fields: [discussionId], references: [id], onDelete: Cascade)
   author       User     @relation(fields: [authorId], references: [id], onDelete: Restrict)
 
+  @@unique([authorId, clientId])
   @@index([discussionId, createdAt])
   @@index([authorId, createdAt])
 }
@@ -434,4 +442,25 @@ model ServiceArea {
   updatedAt DateTime @updatedAt
   @@unique([state, lga, lcda])
   @@index([state, lga, isActive])
+}
+
+/// News & updates written by administrators for everyone who uses the app (members, counsellors and admins).
+model NewsPost {
+  id          String    @id @default(cuid())
+  title       String    @db.VarChar(160)
+  body        String    @db.VarChar(5000)
+  imageUrl    String?   @db.VarChar(2048)
+  /// Optional "Read more" link (https).
+  linkUrl     String?   @db.VarChar(2048)
+  /// Pinned posts stay at the top of the feed.
+  pinned      Boolean   @default(false)
+  isPublished Boolean   @default(true)
+  /// First time the post was published; drives feed order and the "new" dot. Null while it is a draft.
+  publishedAt DateTime?
+  authorId    String
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  author      User      @relation(fields: [authorId], references: [id], onDelete: Restrict)
+
+  @@index([isPublished, pinned, publishedAt])
 }

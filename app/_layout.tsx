@@ -61,12 +61,16 @@ function RootNavigator() {
         <Stack.Screen name="discussion/[id]" options={{ presentation: "card" }} />
         <Stack.Screen name="feature/[slug]" options={{ headerShown: false }} />
         <Stack.Screen name="content/[kind]/[id]" options={{ presentation: "card" }} />
+        <Stack.Screen name="news/index" options={{ presentation: "card" }} />
+        <Stack.Screen name="news/[id]" options={{ presentation: "card" }} />
       </Stack.Protected>
 
       {/* Email links: open whether or not someone is signed in */}
       <Stack.Screen name="verify" options={{ presentation: "card" }} />
       <Stack.Screen name="reset-password" options={{ presentation: "card" }} />
       <Stack.Screen name="counsellor-invite" options={{ presentation: "card" }} />
+      {/* Open to everyone, signed in or not */}
+      <Stack.Screen name="policies" options={{ presentation: "card" }} />
     </Stack>
   );
 }

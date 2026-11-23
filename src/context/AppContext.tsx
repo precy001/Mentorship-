@@ -2,7 +2,7 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useR
 import { AppState as NativeAppState } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { isForMember } from "../lib/audience";
-import { ApiError, apiLogout, apiMe, apiGetPublicResources, apiGetPublicScholarships, apiGetPublicGrants, apiListActivities, apiNotificationPage, apiNotificationUnreadCount, apiMarkAllNotificationsRead, apiReadNotification, apiMarkWelcomeSeen, apiCreateActivity, apiUpdateActivity, apiListAppointments, type ApiUser } from "../lib/api";
+import { ApiError, apiLogout, apiMe, apiGetPublicResources, apiGetPublicScholarships, apiGetPublicGrants, apiListActivities, apiNotificationPage, apiNotificationUnreadCount, apiMarkAllNotificationsRead, apiReadNotification, apiMarkWelcomeSeen, apiCreateActivity, apiUpdateActivity, apiListAppointments, apiMarkDiscussionsDelivered, type ApiUser } from "../lib/api";
 
 type AppRole = "member" | "student" | "counsellor" | "admin" | "super_admin";
 type User = {
@@ -227,18 +227,31 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     } catch { /* offline or signed out elsewhere: keep the current session as it is */ }
   }, []);
 
+  // Message receipts: whenever the app checks in, discussion messages have reached this phone, so the server marks
+  // them "delivered" (two grey ticks for the sender). Administrators oversee conversations and are never the
+  // recipient. One request per check-in, and it writes nothing when nothing is waiting.
+  const userRole = state.user?.role;
+  const receiptsSupported = useRef(true);
+  const acknowledgeDelivery = useCallback(() => {
+    if (!userRole || userRole === "admin" || userRole === "super_admin" || !receiptsSupported.current) return;
+    apiMarkDiscussionsDelivered().catch((error: unknown) => {
+      if (error instanceof ApiError && error.status === 404) receiptsSupported.current = false; // older server
+    });
+  }, [userRole]);
+
   // In-app delivery: check for new notifications while the app is open and whenever it returns to the foreground.
   useEffect(() => {
     if (!userId) return;
     let timer: ReturnType<typeof setInterval> | null = null;
-    const start = () => { if (!timer) timer = setInterval(() => { void refreshNotifications(); }, 45_000); };
+    const checkIn = () => { void refreshNotifications(); acknowledgeDelivery(); };
+    const start = () => { if (!timer) timer = setInterval(checkIn, 45_000); };
     const stop = () => { if (timer) { clearInterval(timer); timer = null; } };
-    if (NativeAppState.currentState === "active") start();
+    if (NativeAppState.currentState === "active") { acknowledgeDelivery(); start(); }
     const subscription = NativeAppState.addEventListener("change", status => {
-      if (status === "active") { void refreshNotifications(); void refreshAccount(); start(); } else stop();
+      if (status === "active") { checkIn(); void refreshAccount(); start(); } else stop();
     });
     return () => { stop(); subscription.remove(); };
-  }, [userId, refreshNotifications, refreshAccount]);
+  }, [userId, refreshNotifications, refreshAccount, acknowledgeDelivery]);
 
   const patch = (fn: (current: AppState) => AppState) => setState(current => fn(current));
 

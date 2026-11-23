@@ -1,8 +1,12 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { CounsellorAvailability, DiscussionStatus, UserRole, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import type { AuthenticatedUser } from '../auth/decorators/current-user.decorator';
 import { assignWaitingDiscussions, MAX_ACTIVE_DISCUSSIONS, syncCounsellorWorkload } from './assignment.util';
+import { fromOtherSide, isFromOtherSide, viewerSide } from './receipts';
+
+const AUTHOR = { select: { id: true, displayName: true, role: true } } as const;
+const ACTIVE_ASSIGNMENTS = { where: { releasedAt: null }, select: { counsellor: { select: { userId: true } } } } as const;
 
 @Injectable()
 export class DiscussionsService {
@@ -82,45 +86,136 @@ export class DiscussionsService {
     }, { isolationLevel: 'Serializable' });
   }
 
+  /** The discussions this person takes part in (all of them for administrators), with how many messages they haven't seen. */
   async list(user: AuthenticatedUser) {
     const where: Prisma.DiscussionWhereInput = user.role === UserRole.MEMBER
       ? { creatorId: user.id }
       : user.role === UserRole.COUNSELLOR
         ? { assignments: { some: { releasedAt: null, counsellor: { userId: user.id } } } }
         : {};
-    return this.prisma.discussion.findMany({ where, orderBy: { updatedAt: 'desc' }, include: {
+    const discussions = await this.prisma.discussion.findMany({ where, orderBy: { updatedAt: 'desc' }, include: {
       topic: { select: { id: true, name: true } }, creator: { select: { id: true, displayName: true } },
       assignments: { where: { releasedAt: null }, include: { counsellor: { include: { user: { select: { id: true, displayName: true } } } } } },
       _count: { select: { messages: true } },
+      // Only the author of each message not seen yet: enough to count the unread ones from the other side.
+      messages: { where: { readAt: null }, select: { authorId: true } },
     } });
+    return discussions.map(({ messages, ...discussion }) => {
+      const side = viewerSide(user, discussion);
+      const unreadCount = side ? messages.filter((message) => isFromOtherSide(side, discussion.creatorId, message.authorId)).length : 0;
+      return { ...discussion, unreadCount };
+    });
   }
 
   async get(user: AuthenticatedUser, id: string) {
     const discussion = await this.prisma.discussion.findUnique({ where: { id }, include: {
       topic: true, creator: { select: { id: true, displayName: true } },
       assignments: { where: { releasedAt: null }, include: { counsellor: { include: { user: { select: { id: true, displayName: true } } } } } },
-      messages: { orderBy: { createdAt: 'asc' }, include: { author: { select: { id: true, displayName: true, role: true } } } },
+      messages: { orderBy: { createdAt: 'asc' }, include: { author: AUTHOR } },
     } });
     if (!discussion) throw new NotFoundException('Discussion not found.');
     await this.assertAccess(user, discussion);
     return discussion;
   }
 
-  async sendMessage(user: AuthenticatedUser, id: string, body: string) {
+  /**
+   * "Seen": the app calls this while the conversation is open on screen (and the app is in the foreground).
+   * Everything the other side sent is marked seen, and delivered too if no app had received it yet. Reading is a
+   * separate POST rather than a side effect of GET, so loading a conversation in the background, or an
+   * administrator overseeing it, never sends a false "seen". Idempotent: messages already seen keep their time.
+   */
+  async markRead(user: AuthenticatedUser, id: string) {
+    const discussion = await this.prisma.discussion.findUnique({ where: { id }, select: { id: true, creatorId: true, assignments: ACTIVE_ASSIGNMENTS } });
+    if (!discussion) throw new NotFoundException('Discussion not found.');
+    await this.assertAccess(user, discussion);
+    const side = viewerSide(user, discussion);
+    if (!side) return { read: 0, at: null };
+    const now = new Date();
+    const incoming: Prisma.DiscussionMessageWhereInput = { discussionId: id, ...fromOtherSide(side, discussion.creatorId) };
+    const [, read] = await this.prisma.$transaction([
+      this.prisma.discussionMessage.updateMany({ where: { ...incoming, deliveredAt: null }, data: { deliveredAt: now } }),
+      this.prisma.discussionMessage.updateMany({ where: { ...incoming, readAt: null }, data: { readAt: now } }),
+    ]);
+    return { read: read.count, at: now.toISOString() };
+  }
+
+  /**
+   * "Delivered": the app calls this whenever it checks in (on its regular notification check and when it comes
+   * back to the foreground), which is the moment messages reach the device. Marks every message the other side
+   * sent in this person's discussions that had not reached them yet.
+   */
+  async markDelivered(user: AuthenticatedUser) {
+    const where: Prisma.DiscussionWhereInput | null = user.role === UserRole.MEMBER
+      ? { creatorId: user.id }
+      : user.role === UserRole.COUNSELLOR
+        ? { assignments: { some: { releasedAt: null, counsellor: { userId: user.id } } } }
+        : null; // administrators oversee; they are not the recipient of anyone's messages
+    if (!where) return { delivered: 0 };
+    // Only conversations that have something undelivered, so the usual case is one small query and no write.
+    const pending = await this.prisma.discussion.findMany({
+      where: { ...where, messages: { some: { deliveredAt: null } } },
+      select: { id: true, creatorId: true, assignments: ACTIVE_ASSIGNMENTS },
+    });
+    const filters = pending.flatMap((discussion) => {
+      const side = viewerSide(user, discussion);
+      return side ? [{ discussionId: discussion.id, ...fromOtherSide(side, discussion.creatorId) }] : [];
+    });
+    if (!filters.length) return { delivered: 0 };
+    const result = await this.prisma.discussionMessage.updateMany({ where: { deliveredAt: null, OR: filters }, data: { deliveredAt: new Date() } });
+    return { delivered: result.count };
+  }
+
+  /**
+   * Sends a message. `clientId` is an id the app makes for each message: if a send is retried (for example after
+   * the connection dropped before the reply arrived), the first copy is returned instead of a duplicate.
+   */
+  async sendMessage(user: AuthenticatedUser, id: string, body: string, clientId?: string) {
     const discussion = await this.prisma.discussion.findUnique({
       where: { id },
       include: { assignments: { where: { releasedAt: null }, include: { counsellor: true } } },
     });
     if (!discussion) throw new NotFoundException('Discussion not found.');
     await this.assertAccess(user, discussion);
+    if (clientId) {
+      const existing = await this.findByClientId(user.id, clientId);
+      if (existing) return this.sameDiscussion(existing, id);
+    }
     if (([DiscussionStatus.COMPLETED, DiscussionStatus.CANCELLED] as DiscussionStatus[]).includes(discussion.status)) {
       throw new BadRequestException('This discussion is closed.');
     }
 
+    try {
+      return await this.saveMessage(user, discussion, body, clientId);
+    } catch (error) {
+      // Two copies of the same retry arrived together: the unique (author, clientId) index let one through.
+      if (clientId && error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        const existing = await this.findByClientId(user.id, clientId);
+        if (existing) return this.sameDiscussion(existing, id);
+      }
+      throw error;
+    }
+  }
+
+  private findByClientId(authorId: string, clientId: string) {
+    return this.prisma.discussionMessage.findFirst({ where: { authorId, clientId }, include: { author: AUTHOR } });
+  }
+
+  private sameDiscussion<T extends { discussionId: string }>(message: T, discussionId: string): T {
+    if (message.discussionId !== discussionId) throw new ConflictException('This message id was already used in another discussion.');
+    return message;
+  }
+
+  private saveMessage(
+    user: AuthenticatedUser,
+    discussion: { id: string; title: string; status: DiscussionStatus; creatorId: string; assignments: { counsellor: { userId: string } }[] },
+    body: string,
+    clientId?: string,
+  ) {
+    const id = discussion.id;
     return this.prisma.$transaction(async tx => {
       const message = await tx.discussionMessage.create({
-        data: { discussionId: id, authorId: user.id, body: body.trim() },
-        include: { author: { select: { id: true, displayName: true, role: true } } },
+        data: { discussionId: id, authorId: user.id, body: body.trim(), clientId: clientId ?? null },
+        include: { author: AUTHOR },
       });
       if (user.role === UserRole.COUNSELLOR && discussion.status === DiscussionStatus.ASSIGNED) {
         await tx.discussion.update({ where: { id }, data: { status: DiscussionStatus.IN_PROGRESS } });

@@ -523,8 +523,16 @@ export type DiscussionRecord = {
   topic: { id: string; name: string }; creator?: { id: string; displayName: string | null };
   assignments?: { counsellor: { user: { id: string; displayName: string | null } } }[];
   _count?: { messages: number };
+  /** Messages from the other side not seen yet (missing from older API versions). */
+  unreadCount?: number;
 };
-export type DiscussionMessage = { id: string; body: string; createdAt: string; author: { id: string; displayName: string | null; role: string } };
+export type DiscussionMessage = {
+  id: string; body: string; createdAt: string;
+  /** Receipts: when the other side's app received it / opened it. Missing from older API versions. */
+  deliveredAt?: string | null; readAt?: string | null;
+  clientId?: string | null;
+  author: { id: string; displayName: string | null; role: string };
+};
 
 export const apiAdminDashboard = () => apiRequest<AdminDashboardStats>("/admin/dashboard", {}, true);
 export const apiAdminUsers = (search = "") => apiRequest<AdminUser[]>(`/admin/users${search ? `?search=${encodeURIComponent(search)}` : ""}`, {}, true);
@@ -538,7 +546,30 @@ export const apiDiscussionTopics = () => apiRequest<DiscussionTopic[]>("/discuss
 export const apiCreateDiscussion = (input: { topicId: string; title: string; message: string }) => apiRequest<DiscussionRecord>("/discussions", { method: "POST", body: JSON.stringify(input) }, true);
 export const apiListDiscussions = () => apiRequest<DiscussionRecord[]>("/discussions", {}, true);
 export const apiGetDiscussion = (id: string) => apiRequest<DiscussionRecord & { messages: DiscussionMessage[] }>(`/discussions/${encodeURIComponent(id)}`, {}, true);
-export const apiSendDiscussionMessage = (id: string, body: string) => apiRequest<DiscussionMessage>(`/discussions/${encodeURIComponent(id)}/messages`, { method: "POST", body: JSON.stringify({ body }) }, true);
+/**
+ * Sends a message. `clientId` (made once per message by the app) makes retries safe: the server returns the first
+ * copy instead of saving a duplicate. If the server is an older version that does not know `clientId` yet, the
+ * message is sent again without it, so an app update never breaks sending.
+ */
+let serverKnowsClientId = true;
+export async function apiSendDiscussionMessage(id: string, body: string, clientId?: string): Promise<DiscussionMessage> {
+  const path = `/discussions/${encodeURIComponent(id)}/messages`;
+  const post = (payload: object) => apiRequest<DiscussionMessage>(path, { method: "POST", body: JSON.stringify(payload) }, true);
+  if (!clientId || !serverKnowsClientId) return post({ body });
+  try {
+    return await post({ body, clientId });
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 400 && /clientId/i.test(error.message)) {
+      serverKnowsClientId = false;
+      return post({ body });
+    }
+    throw error;
+  }
+}
+/** Receipts: this conversation is open on screen, so the other side's messages are seen. */
+export const apiMarkDiscussionRead = (id: string) => apiRequest<{ read: number; at: string | null }>(`/discussions/${encodeURIComponent(id)}/read`, { method: "POST" }, true);
+/** Receipts: messages from the other side have reached this device. */
+export const apiMarkDiscussionsDelivered = () => apiRequest<{ delivered: number }>("/discussions/delivered", { method: "POST" }, true);
 export const apiSetDiscussionStatus = (id: string, status: "IN_PROGRESS" | "WAITING_FOR_MEMBER" | "COMPLETED" | "CANCELLED") => apiRequest(`/discussions/${encodeURIComponent(id)}/status`, { method: "PATCH", body: JSON.stringify({ status }) }, true);
 export const apiUpdateMembership = (categoryId: string, subcategoryId: string) => apiRequest<{ category: { id: string; name: string; slug: string }; subcategory: { id: string; name: string; slug: string } }>("/profile/membership", { method: "PATCH", body: JSON.stringify({ categoryId, subcategoryId }) }, true);
 export type CounsellorSelf = { availability: string; activeDiscussions: number; averageRating: number | null; ratingCount: number; topics: { id: string; name: string }[] };
@@ -560,7 +591,7 @@ export const apiAdminInviteCounsellor = (email: string, topicIds: string[]) => a
 /** `status` is PENDING_APPROVAL when a counsellor shared the invitation (an administrator approves it next). */
 export const apiAcceptCounsellorInvitation = (token: string) => apiRequest<{ id: string; email: string; role: string; status?: "APPROVED" | "PENDING_APPROVAL"; message?: string }>("/admin/counsellors/invitations/accept", { method: "POST", body: JSON.stringify({ token }) }, true);
 export type WhatsAppInvitation = { token: string; invitePath: string; whatsappNumber: string; expiresAt: string; requiresApproval: boolean; message: string };
-/** Creates a counsellor invitation to share from the person's own WhatsApp. */
+/** Administrators: creates a counsellor invitation to share from their own WhatsApp. */
 export const apiCreateWhatsAppInvitation = (input: { phoneNumber: string; name?: string; topicIds?: string[] }) => apiRequest<WhatsAppInvitation>("/admin/counsellors/invitations/whatsapp", { method: "POST", body: JSON.stringify(input) }, true);
 /** Public https page for an invitation (WhatsApp only makes https links tappable); it opens the app. */
 export const invitationLink = (invitePath: string) => `${API_BASE_URL.replace(/\/$/, "")}${invitePath}`;
@@ -647,3 +678,20 @@ export const apiNotificationPage = (options: { limit?: number; before?: string; 
 export const apiNotificationUnreadCount = () => apiRequest<{ unread: number }>("/notifications/unread-count", {}, true);
 export const apiMarkAllNotificationsRead = () => apiRequest<{ updated: number }>("/notifications/read-all", { method: "POST" }, true);
 export const apiReadNotification = (id: string) => apiRequest<{ success: boolean }>(`/notifications/${encodeURIComponent(id)}/read`, { method: "POST" }, true);
+
+// News & updates ------------------------------------------------------------------------------------------------
+/** A post in the News & updates feed (everyone who is signed in sees the same feed). */
+export type NewsPost = { id: string; title: string; body: string; imageUrl: string | null; linkUrl: string | null; pinned: boolean; publishedAt: string | null; updatedAt: string };
+export type AdminNewsPost = NewsPost & { isPublished: boolean; createdAt: string; author?: { id: string; displayName: string | null } | null };
+export type NewsInput = { title: string; body: string; imageUrl?: string | null; linkUrl: string | null; pinned: boolean; isPublished: boolean };
+export type NewsPage = { items: NewsPost[]; nextCursor: string | null };
+export const apiNewsFeed = (options: { cursor?: string | null; limit?: number } = {}) => {
+  const query = [options.limit ? `limit=${options.limit}` : "", options.cursor ? `cursor=${encodeURIComponent(options.cursor)}` : ""].filter(Boolean).join("&");
+  return apiRequest<NewsPage>(`/news${query ? `?${query}` : ""}`, {}, true);
+};
+export const apiNewsPost = (id: string) => apiRequest<NewsPost>(`/news/${encodeURIComponent(id)}`, {}, true);
+export const apiAdminNews = () => apiRequest<AdminNewsPost[]>("/admin/news", {}, true);
+export const apiAdminCreateNews = (input: NewsInput) => apiRequest<AdminNewsPost>("/admin/news", { method: "POST", body: JSON.stringify(input) }, true);
+export const apiAdminUpdateNews = (id: string, input: NewsInput) => apiRequest<AdminNewsPost>(`/admin/news/${encodeURIComponent(id)}`, { method: "PUT", body: JSON.stringify(input) }, true);
+export const apiAdminSetNewsFlags = (id: string, flags: { pinned?: boolean; isPublished?: boolean }) => apiRequest<AdminNewsPost>(`/admin/news/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(flags) }, true);
+export const apiAdminDeleteNews = (id: string) => apiRequest<{ success: boolean }>(`/admin/news/${encodeURIComponent(id)}`, { method: "DELETE" }, true);

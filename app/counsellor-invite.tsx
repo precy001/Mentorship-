@@ -11,7 +11,7 @@ import { leaveScreen } from "@/src/lib/routes";
 
 const POINTS: { icon: React.ComponentProps<typeof Ionicons>["name"]; text: string }[] = [
   { icon: "log-in-outline", text: "Sign in (or create an account) before accepting. An emailed invitation must be accepted with the email address it was sent to." },
-  { icon: "logo-whatsapp", text: "An invitation a counsellor shared on WhatsApp is reviewed by an administrator before you can take discussions." },
+  { icon: "shield-checkmark-outline", text: "Invitations come from Mentorship+ administrators, by email or on WhatsApp, and include the topics you'll cover." },
   { icon: "time-outline", text: "Invitations expire after seven days." },
 ];
 

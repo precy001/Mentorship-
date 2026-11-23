@@ -252,6 +252,16 @@ export function Pill({ label, tone = "blue" }: { label: string; tone?: Tone }) {
 }
 
 /** Rounded square holding an icon. */
+/** Number of messages not read yet, shown on a conversation in a list. Nothing when there are none. */
+export function UnreadBadge({ count }: { count?: number | null }) {
+  if (!count) return null;
+  return (
+    <View accessibilityLabel={`${count} unread`} style={{ minWidth: 22, height: 22, borderRadius: 11, paddingHorizontal: 6, backgroundColor: colors.primary, alignItems: "center", justifyContent: "center" }}>
+      <Text style={{ color: colors.white, fontSize: 11, fontWeight: "800" }}>{count > 99 ? "99+" : count}</Text>
+    </View>
+  );
+}
+
 export function IconBadge({
   icon,
   tone = "brand",

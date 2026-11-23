@@ -22,10 +22,10 @@ export class AdminController {
   @Patch('users/:id/status') setStatus(@CurrentUser() actor: AuthenticatedUser, @Param('id') id: string, @Body() dto: AccountStatusDto) { return this.admin.setAccountStatus(actor, id, dto.status as UserStatus); }
   @Patch('users/:id/role') setRole(@CurrentUser() actor: AuthenticatedUser, @Param('id') id: string, @Body() dto: UserRoleDto) { return this.admin.setRole(actor, id, dto.role as UserRole); }
   @Post('counsellors/invitations') inviteCounsellor(@CurrentUser() actor: AuthenticatedUser, @Body() dto: CounsellorInvitationDto) { return this.admin.inviteCounsellor(actor, dto.email, dto.topicIds); }
-  /** Counsellors (and admins) create an invitation to share from their own WhatsApp. */
+  /** Administrators create an invitation to share from their own WhatsApp (admin-only, like email invitations). */
   @Post('counsellors/invitations/whatsapp')
-  @Roles('COUNSELLOR', 'ADMIN', 'SUPER_ADMIN')
   inviteCounsellorByWhatsApp(@CurrentUser() actor: AuthenticatedUser, @Body() dto: WhatsAppInvitationDto) { return this.admin.inviteCounsellorByWhatsApp(actor, dto); }
+  /** Requests from WhatsApp invitations that counsellors shared before invitations became admin-only. */
   @Get('counsellors/requests') counsellorRequests() { return this.admin.listCounsellorRequests(); }
   @Post('counsellors/requests/:id/approve') approveCounsellorRequest(@CurrentUser() actor: AuthenticatedUser, @Param('id') id: string) { return this.admin.approveCounsellorRequest(actor, id); }
   @Post('counsellors/requests/:id/decline') declineCounsellorRequest(@CurrentUser() actor: AuthenticatedUser, @Param('id') id: string) { return this.admin.declineCounsellorRequest(actor, id); }

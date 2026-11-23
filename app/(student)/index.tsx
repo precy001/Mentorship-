@@ -9,9 +9,14 @@ import { openContent } from "@/src/lib/routes";
 import { colors, shadows } from "@/src/lib/theme";
 import { appointmentTone, formatDateTime, humanize } from "@/src/lib/format";
 import { useApp } from "@/src/context/AppContext";
+import { NewsCard } from "@/src/components/NewsCard";
+import { refreshNews, useNews } from "@/src/lib/news";
+import { isNewPost } from "@/src/lib/newsFeed";
 
 export default function StudentHome() {
   const app = useApp();
+  const userId = app.user?.id;
+  const news = useNews(userId);
   const [refreshing, setRefreshing] = useState(false);
   const name = app.user?.name?.split(" ")[0] || "there";
   const hour = new Date().getHours();
@@ -42,7 +47,7 @@ export default function StudentHome() {
 
   const onRefresh = async () => {
     setRefreshing(true);
-    try { await app.refreshAccountData(); } finally { setRefreshing(false); }
+    try { await Promise.all([app.refreshAccountData(), userId ? refreshNews(userId, { force: true }) : null]); } finally { setRefreshing(false); }
   };
 
   return (
@@ -107,6 +112,18 @@ export default function StudentHome() {
           );
         })}
       </View>
+
+      {news.items.length ? <>
+        <SectionHeader
+          title="News & updates"
+          subtitle={news.unseen ? `${news.unseen} new from the Mentorship+ team` : "From the Mentorship+ team"}
+          actionLabel="See all"
+          onAction={() => router.push("/news")}
+        />
+        <Card style={{ gap: 0, paddingVertical: 4 }}>
+          {news.items.slice(0, 3).map((item) => <NewsCard key={item.id} compact item={item} isNew={isNewPost(item, news.lastSeenAt)} onPress={() => router.push({ pathname: "/news/[id]", params: { id: item.id } })} />)}
+        </Card>
+      </> : null}
 
       <SectionHeader
         title="Your next steps"

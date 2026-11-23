@@ -2,9 +2,12 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { BackHandler, LayoutChangeEvent, Pressable, ScrollView, Text, View } from "react-native";
 import { AppAlert } from "@/src/lib/alert";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { router } from "expo-router";
 import { Screen, Card, Button, Field, Pill, Row, SectionHeader, StatTile, Chip, EmptyState, Avatar, LoadingBlock, IconBadge, BackLink } from "@/src/components/UI";
 import type { IconName } from "@/src/components/UI";
 import { AudienceField, DatePickerField, ImageUploadField, SelectField, SmartImage, Toast } from "@/src/components/Forms";
+import { InviteCounsellorCard } from "@/src/components/InviteCounsellorCard";
+import { AdminNewsPanel } from "@/src/components/AdminNewsPanel";
 import { colors } from "@/src/lib/theme";
 import { useApp } from "@/src/context/AppContext";
 import {
@@ -14,7 +17,7 @@ import {
   apiAdminCreateGrant, apiAdminDeleteGrant, apiAdminGrants, apiAdminSetGrantActive, apiAdminUpdateGrant, apiGetMembershipCategories,
   apiAdminAppointments, apiAdminAssignTopics, apiAdminAuditLogs, apiAdminAutoAssignDiscussion, apiAdminCreateResource,
   apiAdminCreateScholarship, apiAdminCreateTopic, apiAdminDashboard, apiAdminDeleteResource, apiAdminDeleteScholarship,
-  apiAdminInviteCounsellor, apiAdminModerateRating, apiAdminPendingRatings, apiAdminResources, apiAdminScholarships,
+  apiAdminModerateRating, apiAdminPendingRatings, apiAdminResources, apiAdminScholarships,
   apiAdminServiceAreas, apiAdminSetAccountStatus, apiAdminSetCounsellorAvailability, apiAdminSetResourceActive,
   apiAdminSetRole, apiAdminSetScholarshipActive, apiAdminSetServiceAreaActive, apiAdminCreateServiceArea, apiAdminUpdateServiceArea, apiAdminDeleteServiceArea, apiAdminSetLgaActive, apiAdminRenameLga, apiAdminSetTopicActive, apiAdminTopics,
   apiAdminUnassignedDiscussions, apiAdminUpdateResource, apiAdminUpdateScholarship, apiAdminUploadContentImage, apiAdminUsers,
@@ -25,11 +28,11 @@ import type { PickedImage } from "@/src/lib/imagePicker";
 import { READ_MINUTES_MAX, READ_MINUTES_MIN, RESOURCE_CATEGORIES, SCHOLARSHIP_LEVELS, minutesFromReadTime, readTimeLabel, toOptions } from "@/src/lib/options";
 import {
   digitsOnly, endOfDayIso, formatDisplayDate, hasErrors, toDateString, validateChoice, validateDateString,
-  validateEmail, validateInteger, validateLength,
+  validateInteger, validateLength,
 } from "@/src/lib/validation";
 
 type FormErrors = Record<string, string | null>;
-type AdminSection = "overview" | "accounts" | "counselling" | "resources" | "scholarships" | "grants" | "platform";
+type AdminSection = "overview" | "accounts" | "counselling" | "news" | "resources" | "scholarships" | "grants" | "platform";
 type Success = { title: string; message: string; toast?: boolean };
 const emptyResource = { title: "", category: "", minutes: "5", description: "", audience: DEFAULT_AUDIENCE.resource };
 const NEW_LGA = "__new__";
@@ -71,13 +74,10 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(true);
   const [usersLoading, setUsersLoading] = useState(false);
 
-  // Topic and invitation forms
+  // Topic form (the counsellor invitation form is its own component: InviteCounsellorCard)
   const [newTopic, setNewTopic] = useState("");
   const [description, setDescription] = useState("");
   const [topicErrors, setTopicErrors] = useState<FormErrors>({});
-  const [inviteEmail, setInviteEmail] = useState("");
-  const [inviteTopicIds, setInviteTopicIds] = useState<string[]>([]);
-  const [inviteErrors, setInviteErrors] = useState<FormErrors>({});
 
   // Resource form
   const [resourceForm, setResourceForm] = useState(emptyResource);
@@ -243,18 +243,6 @@ export default function AdminDashboard() {
     perform(`avail-${user.id}`, "Availability update failed", () => apiAdminSetCounsellorAvailability(user.id, availability), { title: "", message: `Availability set to ${availability.replace("_", " ").toLowerCase()}.`, toast: true });
 
   /* ---------------------------------------------------------------- invitations and topics */
-  const inviteCounsellor = async () => {
-    const errors: FormErrors = {
-      email: validateEmail(inviteEmail),
-      topics: inviteTopicIds.length ? null : "Select at least one counselling topic.",
-    };
-    setInviteErrors(errors);
-    if (hasErrors(errors)) return;
-    const email = inviteEmail.trim().toLowerCase();
-    const ok = await perform("invite", "Invitation failed", () => apiAdminInviteCounsellor(email, inviteTopicIds), { title: "Invitation sent", message: `An invitation was emailed to ${email}. It expires in seven days.` });
-    if (ok) { setInviteEmail(""); setInviteTopicIds([]); setInviteErrors({}); }
-  };
-
   const addTopic = async () => {
     const duplicate = topics.some((topic) => topic.name.trim().toLowerCase() === newTopic.trim().toLowerCase());
     const errors: FormErrors = {
@@ -562,6 +550,7 @@ export default function AdminDashboard() {
     { key: "overview", label: "Overview" },
     { key: "accounts", label: "Accounts" },
     { key: "counselling", label: "Counselling", count: attention },
+    { key: "news", label: "News" },
     { key: "resources", label: "Resources" },
     { key: "scholarships", label: "Scholarships" },
     { key: "grants", label: "Grants" },
@@ -625,7 +614,17 @@ export default function AdminDashboard() {
               {counsellorRequests.length ? <Row style={{ justifyContent: "space-between" }}><Text style={{ color: colors.ink, flex: 1 }}>{counsellorRequests.length} counsellor {counsellorRequests.length === 1 ? "request" : "requests"} to approve</Text><Button size="sm" title="Review" variant="secondary" onPress={() => switchSection("counselling")} /></Row> : null}
             </Card>
           ) : null}
+          <Row style={{ flexWrap: "wrap", gap: 8 }}>
+            <Button title="Post an update" icon="megaphone-outline" variant="secondary" size="sm" disabled={anyBusy} onPress={() => switchSection("news")} />
+            <Button title="Invite a counsellor" icon="person-add-outline" variant="secondary" size="sm" disabled={anyBusy} onPress={() => switchSection("accounts")} />
+          </Row>
           <Button title="Refresh platform data" icon="refresh" variant="secondary" loading={loading} disabled={anyBusy} onPress={() => void refresh()} />
+        </> : null}
+
+        {section === "news" ? <>
+        {/* ------------------------------------------------ news & updates */}
+        {h("News & updates", "Posts here appear in everyone’s News & updates: members, counsellors and administrators.")}
+        <AdminNewsPanel disabled={anyBusy} onToast={showToast} />
         </> : null}
 
         {section === "accounts" ? <>
@@ -695,32 +694,16 @@ export default function AdminDashboard() {
         {!users.length && !loading ? emptyCard(searchTerm.current ? `No accounts match “${searchTerm.current}”.` : "No accounts were found.") : null}
 
         {/* ------------------------------------------------ invitations */}
-        {h("Invite a counsellor", "Send an invitation to an existing Mentorship+ account or a new registrant. The invitee must sign in with the invited email and accept the link.")}
-        <Card style={adminCardStyle}>
-          {title("Invitation details", "Choose the email address and counselling topics for the invitation.")}
-          <Field label="Counsellor email address" value={inviteEmail} onChangeText={(v) => { setInviteEmail(v); if (inviteErrors.email) setInviteErrors((e) => ({ ...e, email: null })); }} placeholder="counsellor@example.com" keyboardType="email-address" autoCapitalize="none" autoCorrect={false} autoComplete="email" textContentType="emailAddress" required error={inviteErrors.email} onBlur={() => inviteEmail && setInviteErrors((e) => ({ ...e, email: validateEmail(inviteEmail) }))} />
-          <Text style={{ color: colors.ink, fontWeight: "700" }}>Assign topics <Text style={{ color: colors.error }}>*</Text></Text>
-          {activeTopics.length ? (
-            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-              {activeTopics.map((topic) => {
-                const selected = inviteTopicIds.includes(topic.id);
-                return (
-                  <Pressable key={topic.id} accessibilityRole="checkbox" accessibilityState={{ checked: selected }} onPress={() => { setInviteTopicIds((c) => (selected ? c.filter((id) => id !== topic.id) : [...c, topic.id])); setInviteErrors((e) => ({ ...e, topics: null })); }}>
-                    <Pill label={`${selected ? "✓ " : "+ "}${topic.name}`} tone={selected ? "green" : "blue"} />
-                  </Pressable>
-                );
-              })}
-            </View>
-          ) : <Text style={{ color: colors.muted, fontSize: 12 }}>No active topics yet. Create a counselling topic below first.</Text>}
-          {inviteErrors.topics ? <Text accessibilityLiveRegion="polite" style={{ color: colors.error, fontSize: 12, fontWeight: "600" }}>{inviteErrors.topics}</Text> : null}
-          <Button title={isBusy("invite") ? "Sending…" : "Send counsellor invitation"} loading={isBusy("invite")} disabled={anyBusy} onPress={() => void inviteCounsellor()} />
-        </Card>
+        {h("Invite a counsellor", "Invite someone to become a counsellor by email or on WhatsApp. Only administrators can invite counsellors.")}
+        <InviteCounsellorCard topics={activeTopics} disabled={anyBusy} onInvited={() => void refresh()} />
 
         </> : null}
 
         {section === "counselling" ? <>
-        {/* ------------------------------------------------ counsellor requests (WhatsApp invitations) */}
-        {h("Counsellor requests", `People who accepted a counsellor invitation shared on WhatsApp by a counsellor · ${counsellorRequests.length} waiting for approval.`)}
+        {/* ------------------------------------------------ counsellor requests (legacy) */}
+        {/* Only shown while requests remain from before invitations became admin-only (counsellors used to be able
+            to share invitations, which then needed approval). New invitations never create requests. */}
+        {counsellorRequests.length ? h("Counsellor requests", `People who accepted an invitation a counsellor shared before invitations became admin-only · ${counsellorRequests.length} waiting for approval.`) : null}
         {counsellorRequests.map((item) => (
           <Card key={item.id} style={adminCardStyle}>
             <Row style={{ gap: 12, alignItems: "flex-start" }}>
@@ -738,7 +721,6 @@ export default function AdminDashboard() {
             </Row>
           </Card>
         ))}
-        {!counsellorRequests.length && !loading ? emptyCard("No counsellor requests are waiting. Counsellors can invite others on WhatsApp from their workspace.") : null}
 
         {/* ------------------------------------------------ appointments */}
         {h("Appointment oversight", `Review appointment requests and their current status · ${appointments.length} records. Members and assigned counsellors manage changes.`)}
@@ -980,6 +962,12 @@ export default function AdminDashboard() {
           </>;
         })()}
         {!serviceAreas.length && !loading ? emptyCard("No service areas are configured. Add the first LCDA above.") : null}
+
+        {/* ------------------------------------------------ policies */}
+        {h("Policy & Guidelines", "The page members and counsellors open from their profile and workspace. Its content will be added here later.")}
+        <Card style={adminCardStyle}>
+          <Button title="Open Policy & Guidelines" icon="document-text-outline" variant="secondary" onPress={() => router.push("/policies")} />
+        </Card>
 
         {/* ------------------------------------------------ audit */}
         {h("Administrative audit trail", `Recent account, topic, content, appointment and moderation actions · ${auditLogs.length} entries.`)}

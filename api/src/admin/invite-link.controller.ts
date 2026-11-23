@@ -40,7 +40,7 @@ export function renderPage(appLink: string | null): string {
          <li>Create an account or sign in.</li>
          <li>Come back to this message, tap the link again, then tap <b>Accept invitation</b>.</li>
        </ol>
-       <p class="note">Invitations expire after seven days. If a counsellor invited you, an administrator approves new counsellors before they can take discussions.</p>`
+       <p class="note">Invitations come from Mentorship+ administrators and expire after seven days.</p>`
     : `<h1>This invitation link isn't valid</h1><p>Ask the person who invited you to send a new invitation.</p>`;
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Mentorship+ invitation</title>
 <style>

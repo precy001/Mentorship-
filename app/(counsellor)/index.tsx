@@ -3,12 +3,14 @@ import { Pressable, Text, View } from "react-native";
 import { AppAlert } from "@/src/lib/alert";
 import { router, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { Screen, Card, Button, ButtonRow, Pill, Avatar, HeroCard, SectionHeader, StatTile, Segmented, PressableCard, EmptyState, LoadingBlock } from "@/src/components/UI";
+import { Screen, Card, Button, ButtonRow, Pill, Avatar, HeroCard, SectionHeader, StatTile, Segmented, PressableCard, EmptyState, LoadingBlock, UnreadBadge, ListGroup, ListRow } from "@/src/components/UI";
 import { colors } from "@/src/lib/theme";
 import { appointmentTone, availabilityTone, discussionIsClosed, discussionTone, formatDateTime, humanize, pluralize } from "@/src/lib/format";
 import { useApp } from "@/src/context/AppContext";
 import { RescheduleForm } from "@/src/components/RescheduleForm";
-import { InviteCounsellorCard } from "@/src/components/InviteCounsellorCard";
+import { NewsCard } from "@/src/components/NewsCard";
+import { useNews } from "@/src/lib/news";
+import { isNewPost } from "@/src/lib/newsFeed";
 import { apiCounsellorMe, apiCounsellorSetAvailability, apiListDiscussions, apiListAppointments, apiUpdateAppointmentStatus, apiRescheduleAppointment, CounsellorSelf, DiscussionRecord, AppointmentRecord } from "@/src/lib/api";
 
 type Availability = "AVAILABLE" | "OFFLINE" | "ON_LEAVE";
@@ -16,6 +18,7 @@ const CAPACITY = 5;
 
 export default function CounsellorWorkspace() {
   const app = useApp();
+  const news = useNews(app.user?.id);
   const [profile, setProfile] = useState<CounsellorSelf | null>(null);
   const [discussions, setDiscussions] = useState<DiscussionRecord[]>([]);
   const [appointments, setAppointments] = useState<AppointmentRecord[]>([]);
@@ -112,15 +115,14 @@ export default function CounsellorWorkspace() {
       <SectionHeader title="Your assigned topics" />
       {profile?.topics.length ? <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>{profile.topics.map(topic => <Pill key={topic.id} label={topic.name} tone="blue" />)}</View> : <Text style={{ color: colors.muted }}>No topics are assigned to you yet. An administrator can assign them.</Text>}
 
-      <SectionHeader title="Grow the team" subtitle="Know someone who would be a good counsellor?" />
-      <InviteCounsellorCard />
-
       <SectionHeader title="Discussion inbox" subtitle={discussions.length ? `${pluralize(active.length, "active conversation")} · ${discussions.length} in total` : "Open a discussion to read and reply to the member."} />
       {inbox.length ? inbox.map(item => {
         const messages = item._count?.messages ?? 0;
-        return <PressableCard key={item.id} accessibilityLabel={`${item.title}. ${item.topic.name}. ${humanize(item.status)}. ${pluralize(messages, "message")}.`} accessibilityHint="Opens the conversation" onPress={() => router.push({ pathname: "/discussion/[id]", params: { id: item.id } })} style={discussionIsClosed(item.status) ? { opacity: 0.8 } : undefined}>
+        const unread = item.unreadCount ?? 0;
+        return <PressableCard key={item.id} accessibilityLabel={`${item.title}. ${item.topic.name}. ${humanize(item.status)}. ${pluralize(messages, "message")}${unread ? `, ${unread} unread` : ""}.`} accessibilityHint="Opens the conversation" onPress={() => router.push({ pathname: "/discussion/[id]", params: { id: item.id } })} style={discussionIsClosed(item.status) ? { opacity: 0.8 } : undefined}>
           <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
-            <Text style={{ color: colors.ink, fontWeight: "800", fontSize: 16, lineHeight: 22, flex: 1 }}>{item.title}</Text>
+            <Text style={{ color: colors.ink, fontWeight: unread ? "900" : "800", fontSize: 16, lineHeight: 22, flex: 1 }}>{item.title}</Text>
+            <UnreadBadge count={unread} />
             <Pill label={humanize(item.status)} tone={discussionTone(item.status)} />
           </View>
           <Text style={{ color: colors.muted, fontSize: 13 }}>{item.topic.name} · {pluralize(messages, "message")}</Text>
@@ -147,6 +149,20 @@ export default function CounsellorWorkspace() {
           <Button grow title="No show" variant="secondary" disabled={!!updatingId} onPress={() => void updateAppointment(item, "NO_SHOW", "Could not update")} />
         </ButtonRow> : null}
       </Card>) : <EmptyState icon="calendar-outline" title="No appointment requests yet" message="New requests from members will appear here." />}
+      <SectionHeader
+        title="News & updates"
+        subtitle={news.items.length ? (news.unseen ? `${news.unseen} new from the Mentorship+ team` : "From the Mentorship+ team") : "Announcements from the Mentorship+ team appear here."}
+        actionLabel={news.items.length ? "See all" : undefined}
+        onAction={() => router.push("/news")}
+      />
+      {news.items.length ? <Card style={{ gap: 0, paddingVertical: 4 }}>
+        {news.items.slice(0, 3).map(item => <NewsCard key={item.id} compact item={item} isNew={isNewPost(item, news.lastSeenAt)} onPress={() => router.push({ pathname: "/news/[id]", params: { id: item.id } })} />)}
+      </Card> : null}
+
+      <ListGroup>
+        <ListRow icon="megaphone-outline" title="News & updates" subtitle="All announcements" badge={news.unseen ? `${news.unseen} new` : undefined} onPress={() => router.push("/news")} />
+        <ListRow icon="document-text-outline" title="Policy & Guidelines" subtitle="How Mentorship+ works" onPress={() => router.push("/policies")} last />
+      </ListGroup>
       <Button title="Refresh inbox" icon="refresh" variant="secondary" loading={refreshing} onPress={() => void onRefresh()} />
     </>}
   </Screen>;

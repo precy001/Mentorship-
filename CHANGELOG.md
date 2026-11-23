@@ -1,6 +1,75 @@
-# Changelog — back buttons, WhatsApp counsellor invitations, check-your-inbox step, custom dialogs, grants, NIN and more
+# Changelog: admin-only invitations, message ticks, sounds, News & updates, Policy & Guidelines (plus everything before)
 
-## Latest additions
+The engineering decisions behind this update are in `DESIGN.md`.
+
+## This update
+
+### Only administrators invite counsellors
+- **Where:** Admin → Accounts → **Invite a counsellor**, with an **Email | WhatsApp** switch. The Overview also has
+  an "Invite a counsellor" shortcut.
+- **WhatsApp:** enter the number (and optionally their name), choose the topics, and tap **Invite on WhatsApp**.
+  WhatsApp opens with the message ready to send. Whoever accepts becomes a counsellor for those topics straight
+  away; no second approval step.
+- **Email** invitations work as before; they are now on the same card.
+- **Removed:** the counsellor workspace's "Grow the team / Invite a counsellor" card. The API refuses counsellors on
+  the WhatsApp invitation endpoint (`403`).
+- **Already-shared counsellor invitations:** migration `20261124090200_admin_only_counsellor_invites` expires the
+  ones nobody has accepted. Any that were already accepted stay in Admin → Counselling → Counsellor requests until
+  approved or declined. That section only shows while some remain.
+
+### Sent, delivered and seen ticks (like WhatsApp)
+- **On your own messages:**
+  - 🕓 sending
+  - ✓ sent
+  - ✓✓ grey: delivered to the other side's app
+  - ✓✓ blue: seen
+  - red **Not sent**: tap to try again or delete
+- **Message info:** tap the time on your message to see when it was sent, delivered and seen.
+- **Faster sending:** messages appear instantly and the box clears straight away. Sends go out in order, and a
+  retry can never create a duplicate.
+- **Unread counts:** conversations show an unread badge in the member's Support list and the counsellor inbox.
+- **Updates come quicker:** the conversation checks every 4 seconds for two minutes after anyone writes, then every
+  15 seconds.
+- **Administrators** reading a conversation never mark it as seen.
+- **API:**
+  - `POST /discussions/:id/read` and `POST /discussions/delivered`
+  - `deliveredAt`, `readAt` and `clientId` on messages
+  - `unreadCount` on the discussion list
+  - optional `clientId` on `POST /discussions/:id/messages`
+- **Migration** `20261124090000_message_receipts` (additive). Existing messages that already have a reply are marked
+  seen.
+
+### Message sounds
+- A soft "drop" when your message is sent, and a gentle pop when a reply arrives while the conversation is open.
+  These are original sounds made for Mentorship+.
+- **No sound** when the phone is on silent or vibrate. Sounds never interrupt music.
+- **A speaker button** at the top of each conversation turns sounds on or off.
+- **New dependency:** `expo-audio` `~57.0.5`, the SDK 57 version, with its plugin in `app.json`. Background playback
+  is off and there is no recording.
+- **Sounds need a new APK** (`eas build`). Over the air, everything else works and older APKs simply stay silent.
+
+### News & updates
+- **Admin → News:** post updates with a title, text, optional picture and optional link. Pin up to 3, save drafts,
+  edit, unpublish or delete.
+- **Where everyone sees them:**
+  - Member Home and the counsellor workspace: a "News & updates" section with "New" labels.
+  - A full **News & updates** screen with older posts.
+  - A page for each post, with Read more and Share.
+  - Links from Profile and the counsellor workspace.
+- **API:** `GET /news` and `GET /news/:id` (any signed-in account); `GET|POST /admin/news` and
+  `PUT|PATCH|DELETE /admin/news/:id` (admins). Migration `20261124090100_news_posts`.
+
+### Policy & Guidelines
+- A new **Policy & Guidelines** screen (empty for now: "Coming soon"), linked from member Profile, the counsellor
+  workspace and Admin → Platform.
+
+### Tests
+- **API:** 126 tests pass (25 new).
+- **App:** 35 unit tests pass (18 new).
+
+---
+
+## Previous update: back buttons, WhatsApp invitations, check-your-inbox
 ### Back button on every screen
 - Explore, Support, Activities and Profile now have a Back link (it returns to the previous screen, or Home).
 - The sign-in screen always shows Back. When nothing is behind it (after signing out, or when opened from an email
@@ -10,7 +79,7 @@
 - The four starting screens (welcome, member Home, counsellor workspace, admin Overview) have no Back, because there
   is nothing before them. Android Back there leaves the app, as usual.
 
-### Counsellors can invite counsellors on WhatsApp
+### Counsellors can invite counsellors on WhatsApp (superseded: invitations are now admin-only, see above)
 - The counsellor workspace has a new "Invite a counsellor" card: enter their WhatsApp number (and optionally their
   name), tap **Invite on WhatsApp**, and WhatsApp opens with a ready-written message to that number. Tap Send.
 - The message has a private https link (WhatsApp only makes https links tappable). It opens a small Mentorship+ web
@@ -40,7 +109,7 @@
 ---
 
 
-## Custom dialogs (latest)
+## Custom dialogs
 - Every pop-up in the app (all 84 of them: success, errors, warnings, confirmations such as Log out?) now uses one
   Mentorship+ dialog instead of the system alert box. It looks the same on Android and iPhone: icon, title,
   message and rounded buttons.
@@ -107,5 +176,5 @@ This overlay also contains the earlier sign-in and verification-link fix files (
 overlay is complete against the project you uploaded. `app/_layout.tsx` gained one line (the new item page), and
 `src/lib/routes.ts` gained `openContent`.
 
-## Not changed
-`app.json`, `package.json` (no new dependencies), `eas.json`, splash design, authentication flow.
+## Not changed in the earlier updates
+`eas.json`, splash design, authentication flow. (This update changes `app.json` and `package.json` to add `expo-audio`; see the top.)

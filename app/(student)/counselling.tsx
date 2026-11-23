@@ -2,7 +2,7 @@ import React, { useCallback, useRef, useState } from "react";
 import { Text, View } from "react-native";
 import { AppAlert } from "@/src/lib/alert";
 import { router, useFocusEffect } from "expo-router";
-import { Screen, Heading, Card, Button, Pill, Field, HeroCard, Chip, SectionHeader, PressableCard, EmptyState, LoadingBlock, ErrorState, BackLink } from "@/src/components/UI";
+import { Screen, Heading, Card, Button, Pill, Field, HeroCard, Chip, SectionHeader, PressableCard, EmptyState, LoadingBlock, ErrorState, BackLink, UnreadBadge } from "@/src/components/UI";
 import { backToHome } from "@/src/lib/routes";
 import { colors } from "@/src/lib/theme";
 import { discussionTone, humanize, pluralize } from "@/src/lib/format";
@@ -187,15 +187,17 @@ export default function Counselling() {
       {discussions.length ? (
         discussions.map((item) => {
           const messages = item._count?.messages ?? 0;
+          const unread = item.unreadCount ?? 0;
           return (
             <PressableCard
               key={item.id}
-              accessibilityLabel={`${item.title}. ${item.topic.name}. ${humanize(item.status)}. ${pluralize(messages, "message")}.`}
+              accessibilityLabel={`${item.title}. ${item.topic.name}. ${humanize(item.status)}. ${pluralize(messages, "message")}${unread ? `, ${unread} unread` : ""}.`}
               accessibilityHint="Opens the conversation"
               onPress={() => router.push({ pathname: "/discussion/[id]", params: { id: item.id } })}
             >
               <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
-                <Text style={{ color: colors.ink, fontWeight: "800", fontSize: 16, lineHeight: 22, flex: 1 }}>{item.title}</Text>
+                <Text style={{ color: colors.ink, fontWeight: unread ? "900" : "800", fontSize: 16, lineHeight: 22, flex: 1 }}>{item.title}</Text>
+                <UnreadBadge count={unread} />
                 <Pill label={humanize(item.status)} tone={discussionTone(item.status)} />
               </View>
               <Text style={{ color: colors.muted, fontSize: 13 }}>

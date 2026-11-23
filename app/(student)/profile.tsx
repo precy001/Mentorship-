@@ -181,6 +181,8 @@ export default function Profile() {
 
       <ListGroup>
         <ListRow icon="heart-outline" title="Saved items" subtitle="Resources, scholarships and grants you’ve saved" onPress={() => router.push({ pathname: "/feature/[slug]", params: { slug: "saved" } })} />
+        <ListRow icon="megaphone-outline" title="News & updates" subtitle="Announcements from the Mentorship+ team" onPress={() => router.push("/news")} />
+        <ListRow icon="document-text-outline" title="Policy & Guidelines" subtitle="How Mentorship+ works" onPress={() => router.push("/policies")} />
         <ListRow icon="help-circle-outline" title="Help & frequently asked questions" last onPress={() => router.push({ pathname: "/feature/[slug]", params: { slug: "help" } })} />
       </ListGroup>
 

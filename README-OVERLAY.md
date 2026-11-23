@@ -1,78 +1,110 @@
-# Overlay: back buttons, WhatsApp counsellor invitations, check-your-inbox step, custom dialogs, grants, NIN and more
+# Overlay: admin-only invitations, message ticks, sounds, News & updates, Policy & Guidelines
 
-This ZIP is cumulative. It contains everything since the project you uploaded: the grants/NIN/audit update, the
-custom dialogs, and the latest additions. Apply only this one. If you already applied an earlier ZIP, extracting
-this one over it is safe; the shared files are the same, with the new changes added.
+**This ZIP is cumulative.** It contains every change since the project you uploaded:
+- this update;
+- the back buttons, WhatsApp invitations and check-your-inbox screen;
+- the custom dialogs;
+- grants, NIN and the audit.
 
-This ZIP holds only new and changed files, at their exact paths inside `mentorship-plus` (app files at the top
-level, API files under `api/`). `AUDIT.md` has the full audit.
+Apply only this one. If you already applied `mentorship-plus-full-update.zip`, extracting this over it is safe. No
+feature was removed. The one deliberate change of behaviour is that counsellors can no longer invite counsellors;
+administrators do it instead, which is what you asked for.
+
+The ZIP holds only new and changed files, at their exact paths inside `mentorship-plus`. App files are at the top
+level and API files are under `api/`. Read `DESIGN.md` for the engineering decisions, and `CHANGELOG.md` for the
+full list of changes.
 
 ## 1. Install
 1. Commit or back up the project.
-2. Extract this ZIP **into the project root** (`C:\Users\Anita Nwaobi\Documents\Projects\mentorship-plus`) and
-   choose **Replace** for every file. Don't copy files by hand, because several share names (`index.tsx`).
-3. Check it landed (PowerShell, project folder):
+2. Extract the ZIP **into the project root** (`C:\Users\Anita Nwaobi\Documents\Projects\mentorship-plus`) and
+   choose **Replace** for every file.
+3. Install the one new package (`expo-audio`, already listed in `package.json` and `package-lock.json`):
    ```
-   Test-Path "app\content\[kind]\[id].tsx"
-   Test-Path "api\prisma\migrations\20261123120000_grants_and_audience\migration.sql"
-   Select-String -Path "app\(student)\explore.tsx" -Pattern "Grants"
+   npm install
    ```
-   The first two print `True`, and the last one prints matching lines.
+4. Check that the files landed. In PowerShell, from the project folder:
+   ```
+   Test-Path "app\news\index.tsx"
+   Test-Path "assets\sounds\message-sent.wav"
+   Test-Path "api\prisma\migrations\20261124090000_message_receipts\migration.sql"
+   Select-String -Path "package.json" -Pattern "expo-audio"
+   ```
+   The three `Test-Path` lines each print `True`, and the last line prints one matching line.
+5. Start once with a clean cache. This also refreshes the route types, so `npx tsc --noEmit` stays clean:
+   ```
+   npx expo start -c
+   ```
 
 ## 2. Deploy the API first (important)
-The API rejects fields it doesn't recognise. If the app update reaches phones before the new API is live,
-registration fails with "property nin should not exist". So, in this order:
+The app sends new data (message ids, receipts). The new app also copes with the old API, but deploying the API first
+gives everyone the full feature straight away.
 
 1. Push the code so Render rebuilds the API.
-2. Apply the migrations to the production database (back up first). There are two new ones, and this single
-   command applies both:
+2. Back up the database, then apply the migrations:
    ```
    npm --prefix api run prisma:migrate:deploy
    ```
-   If your Render build command already runs `prisma migrate deploy`, this happens automatically. The migration
-   adds the grants table, audience columns and 5 placeholder grants, and marks existing scholarships as "for
-   students". It doesn't delete anything.
-3. Check that `https://mentorship-x1fa.onrender.com/api/v1/content/grants` returns a list of 5 grants.
+   If your Render build already runs `prisma migrate deploy`, this happens automatically. There are three new
+   migrations. All of them are additive and safe to run twice:
+   - **Message receipts:** new columns on messages. Existing messages that already have a reply are marked as seen.
+   - **News posts:** a new table.
+   - **Admin-only invitations:** closes WhatsApp invitations that counsellors shared and nobody accepted. No rows are
+     deleted.
+3. Check that `https://mentorship-x1fa.onrender.com/api/v1/health/ready` responds, then sign in to the app as usual.
 
-## 3. Then update the app
-All app changes are JavaScript (no new native modules), so an over-the-air update works:
+## 3. Update the app
+
+**Over the air (all features except sound):**
 ```
-eas update --channel preview --message "Grants, audience targeting, NIN, insights fix"
+eas update --channel preview --message "Admin-only invites, message ticks, News & updates, Policy & Guidelines"
 ```
-Testers should close and reopen the app (possibly twice). For local testing: `npx expo start -c`.
+Testers close and reopen the app, possibly twice.
+
+**New APK (needed for message sounds):** `expo-audio` is native code, so sounds only play in an APK built from this
+version. Older APKs get everything else and simply stay silent; they don't crash.
+```
+eas build -p android --profile preview
+```
+Install the new APK on the test phones. You only need to do this once; later updates can go over the air again.
 
 ## 4. What to test
-1. **Tab bar (Android):** scroll Home over a photo. The bottom bar should be solid white, with nothing showing
-   through or around it.
-2. **Mood → insights:** Activities → Wellbeing check-in → save a mood. "Your week" updates straight away. Then go to
-   Profile: "Mood check-ins" has gone up by one.
-3. **Grants targeting:** as an admin, open Admin → Grants and publish a grant for one subcategory (for example
-   Artisan). Sign in as a member in that subcategory: it shows in Explore → Grants and on Home. A student member
-   shouldn't see it.
-4. **Who is this for? on resources and scholarships:** create one of each for a specific group and confirm who
-   can see it.
-5. **NIN:** register a new account (NIN is required, 11 digits). An existing member sees "Complete your profile"
-   on Home. Add the NIN in Profile → Save details, and the prompt disappears.
-6. **Item page:** tap any card on Home or Explore. You should get the full text, deadline, Save, Share and (if a
-   link is set) Apply.
-7. **Back buttons:** open Explore, Support, Activities and Profile. Each has Back (to Home). Sign out: the sign-in
-   screen has Back (to the welcome screen). As an admin, open any section: "‹ Overview" takes you back.
-8. **Check your inbox:** register a new account. You should land on "Check your inbox" with the Spam reminder.
-   Try signing in before verifying: you get "Verify your email first" with a Resend option.
-9. **WhatsApp invitation:** as a counsellor, enter a WhatsApp number in "Invite a counsellor" and tap Invite on
-   WhatsApp. WhatsApp should open with the message. On the invited phone (with the app installed and signed in as a
-   member), tap the link, then Open in Mentorship+, then Accept invitation. That shows "Request sent". As an admin, go
-   to Counselling → Counsellor requests and tap Approve. The invited person reopens the app and sees the counsellor
-   workspace.
-10. **Dialogs:** change your profile picture, log out, or submit a form with a mistake. Each message should appear in
-   the new Mentorship+ dialog (rounded card with an icon), not the grey system box, on both Android and iPhone.
-11. **Conversation:** open a discussion on two phones (member and counsellor). A reply appears on the other phone
-   within about 15 seconds without leaving the screen.
+1. **Admin invites by WhatsApp:**
+   - In Admin → Accounts → Invite a counsellor, choose **WhatsApp**, enter a number and a topic, and tap
+     **Invite on WhatsApp**. WhatsApp opens with the message; tap Send.
+   - On the invited phone, signed in as a member, tap the link → **Open in Mentorship+** → **Accept invitation**.
+   - They become a counsellor straight away. There's no approval step for admin invitations.
+2. **Admin invites by email:** the same card with **Email** selected works as before.
+3. **Counsellors can't invite:** the counsellor workspace no longer has the invite card.
+4. **Ticks** (member on one phone, counsellor on another):
+   - Send a message: a clock, then ✓.
+   - When the other phone's app is open: ✓✓ grey.
+   - When they open the conversation: ✓✓ blue, within a few seconds.
+   - Tap the time on your message to see Message info.
+   - Turn off the internet and send: the message turns red ("Not sent"). Turn it back on and tap it → Try again.
+     It's sent once, never twice.
+5. **Unread badge:** a new reply shows a number on the conversation in Support (member) and in the counsellor inbox.
+   Opening the conversation clears it.
+6. **Sounds (new APK):** sending plays a drop sound, and a reply arriving while the conversation is open plays a
+   softer pop. With the phone on silent or vibrate, there's no sound. The speaker button at the top of the
+   conversation turns sounds off and on.
+7. **News & updates:**
+   - In Admin → News, post an update (try a picture, a link and Pin).
+   - As a member, it shows on Home with **New**; See all opens the feed, and the post opens with Read more and Share.
+   - As a counsellor, it shows in the workspace.
+   - Try Save as draft (hidden from everyone), Publish, Unpin and Delete.
+8. **Policy & Guidelines:** open it from Profile (member), the counsellor workspace, and Admin → Platform. It says
+   "Coming soon".
 
-## Placeholder grants
-The 5 placeholder grants say "Mentorship+ (placeholder listing)" and explain they are placeholders. Edit them into
-real opportunities, or unpublish them, in Admin → Grants before launch.
+## Notes
+- **Admin → Counselling → Counsellor requests** only appears if someone accepted a counsellor-shared invitation
+  before this update. Approve or decline those as before; no new ones will appear.
+- **iPhone testing with Expo Go** still needs SDK 58 (see the earlier note); test on the Android APK.
+- **Ticks while the app is closed:** "Delivered" happens when the recipient's app is open or next opened. Ticks that
+  go grey while the app is closed need push notifications, which aren't set up yet (see `DESIGN.md`).
 
 ## Rollback
-Restore your backup or `git checkout` the listed files, and delete the new files. The database migration is
-additive. If you roll back the code, the extra columns and grants table can stay in place without harm.
+1. Restore your backup (or `git checkout` the listed files) and delete the new files.
+2. Run `npm install` to drop `expo-audio`.
+
+The migrations are additive, so the new columns and table can stay if you roll back the code. The invitations they
+closed would need re-sending.

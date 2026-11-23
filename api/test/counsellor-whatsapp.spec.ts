@@ -2,6 +2,8 @@ import 'reflect-metadata';
 import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { createHash } from 'node:crypto';
 import { AdminService } from '../src/admin/admin.service';
+import { AdminController } from '../src/admin/admin.controller';
+import { ROLES_KEY } from '../src/auth/decorators/roles.decorator';
 import { renderPage } from '../src/admin/invite-link.controller';
 import { toWhatsAppNumber } from '../src/common/phone';
 
@@ -46,32 +48,46 @@ const admin = { id: 'admin-1', email: 'a@example.com', role: 'ADMIN', status: 'A
 const member = { id: 'member-1', email: 'new@example.com', role: 'MEMBER', status: 'ACTIVE' } as never;
 
 describe('WhatsApp counsellor invitations', () => {
-  it("a counsellor's invitation uses their topics and needs admin approval", async () => {
+  it('only administrators can create WhatsApp invitations', async () => {
     const { service, prisma } = build();
-    const result = await service.inviteCounsellorByWhatsApp(counsellor, { phoneNumber: '0803 123 4567', name: ' Ada ' });
-    const data = prisma.counsellorInvitation.create.mock.calls[0][0].data;
-    expect(data).toMatchObject({ channel: 'WHATSAPP', phoneNumber: '2348031234567', inviteeName: 'Ada', topicIds: ['t1', 't2'], requiresApproval: true, invitedById: 'c-1' });
-    expect(data.tokenHash).toBe(hash(result.token));
-    expect(result).toMatchObject({ requiresApproval: true, whatsappNumber: '2348031234567', invitePath: `/invite/${result.token}` });
-  });
-
-  it("an admin's invitation needs topics and no approval", async () => {
-    const { service, prisma } = build();
-    await expect(service.inviteCounsellorByWhatsApp(admin, { phoneNumber: '08031234567' })).rejects.toBeInstanceOf(BadRequestException);
-    const result = await service.inviteCounsellorByWhatsApp(admin, { phoneNumber: '08031234567', topicIds: ['t9'] });
-    expect(result.requiresApproval).toBe(false);
-    expect(prisma.counsellorInvitation.create.mock.calls[0][0].data).toMatchObject({ topicIds: ['t9'], requiresApproval: false });
-  });
-
-  it('limits how many invitations one person sends a day and rejects bad numbers', async () => {
-    const { service, prisma } = build();
-    await expect(service.inviteCounsellorByWhatsApp(counsellor, { phoneNumber: '12' })).rejects.toBeInstanceOf(BadRequestException);
-    prisma.counsellorInvitation.count.mockResolvedValueOnce(AdminService.WHATSAPP_INVITES_PER_DAY);
-    await expect(service.inviteCounsellorByWhatsApp(counsellor, { phoneNumber: '08031234567' })).rejects.toThrow(/a day/);
+    await expect(service.inviteCounsellorByWhatsApp(counsellor, { phoneNumber: '0803 123 4567', topicIds: ['t1'] })).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(service.inviteCounsellorByWhatsApp(member, { phoneNumber: '0803 123 4567', topicIds: ['t1'] })).rejects.toBeInstanceOf(ForbiddenException);
     expect(prisma.counsellorInvitation.create).not.toHaveBeenCalled();
   });
 
-  it('accepting a counsellor invitation sends it to administrators instead of granting the role', async () => {
+  it('the route is admin-only: counsellors are no longer allowed by the role metadata', () => {
+    // Same resolution as RolesGuard: a method-level @Roles overrides the controller's.
+    const roles = Reflect.getMetadata(ROLES_KEY, AdminController.prototype.inviteCounsellorByWhatsApp) ?? Reflect.getMetadata(ROLES_KEY, AdminController);
+    expect(roles).toEqual(['ADMIN', 'SUPER_ADMIN']);
+  });
+
+  it("an admin's invitation needs topics, is pre-approved and carries the invitee's details", async () => {
+    const { service, prisma } = build();
+    await expect(service.inviteCounsellorByWhatsApp(admin, { phoneNumber: '08031234567' })).rejects.toBeInstanceOf(BadRequestException);
+    const result = await service.inviteCounsellorByWhatsApp(admin, { phoneNumber: '0803 123 4567', name: ' Ada ', topicIds: ['t9', 't9'] });
+    const data = prisma.counsellorInvitation.create.mock.calls[0][0].data;
+    expect(data).toMatchObject({ channel: 'WHATSAPP', phoneNumber: '2348031234567', inviteeName: 'Ada', topicIds: ['t9'], requiresApproval: false, invitedById: 'admin-1' });
+    expect(data.tokenHash).toBe(hash(result.token));
+    expect(result).toMatchObject({ requiresApproval: false, whatsappNumber: '2348031234567', invitePath: `/invite/${result.token}` });
+  });
+
+  it('limits how many invitations one admin sends a day and rejects bad numbers', async () => {
+    const { service, prisma } = build();
+    await expect(service.inviteCounsellorByWhatsApp(admin, { phoneNumber: '12', topicIds: ['t1'] })).rejects.toBeInstanceOf(BadRequestException);
+    prisma.counsellorInvitation.count.mockResolvedValueOnce(AdminService.WHATSAPP_INVITES_PER_DAY);
+    await expect(service.inviteCounsellorByWhatsApp(admin, { phoneNumber: '08031234567', topicIds: ['t1'] })).rejects.toThrow(/a day/);
+    expect(prisma.counsellorInvitation.create).not.toHaveBeenCalled();
+  });
+
+  it("accepting an admin's WhatsApp invitation makes the person a counsellor straight away", async () => {
+    const { service, prisma, tx } = build();
+    prisma.counsellorInvitation.findUnique.mockResolvedValue({ id: 'inv-3', email: null, channel: 'WHATSAPP', requiresApproval: false, invitedById: 'admin-1', topicIds: ['t1'], acceptedAt: null, expiresAt: new Date(Date.now() + 60_000) });
+    const result = await service.acceptCounsellorInvitation(member, 'x'.repeat(43));
+    expect(result.status).toBe('APPROVED');
+    expect(tx.user.update.mock.calls[0][0]).toMatchObject({ where: { id: 'member-1' }, data: { role: 'COUNSELLOR' } });
+  });
+
+  it('a legacy invitation shared by a counsellor still goes to administrators instead of granting the role', async () => {
     const { service, prisma, tx } = build();
     prisma.counsellorInvitation.findUnique.mockResolvedValue({ id: 'inv-1', email: null, channel: 'WHATSAPP', requiresApproval: true, invitedById: 'c-1', topicIds: ['t1'], acceptedAt: null, expiresAt: new Date(Date.now() + 60_000) });
     const result = await service.acceptCounsellorInvitation(member, 'x'.repeat(43));
