@@ -123,7 +123,7 @@ export function AdminNewsPanel({ disabled, onToast }: { disabled?: boolean; onTo
   return (
     <>
       <Card style={cardStyle}>
-        <Heading small title={editing ? "Edit update" : "Post an update"} subtitle={editing ? `Editing “${editing.title}”.` : "Share news, announcements or anything everyone should know. Members, counsellors and admins all see it."} />
+        <Heading small title={editing ? "Edit update" : "Post an update"} subtitle={editing ? `Editing “${editing.title}”.` : "Share news, announcements or anything everyone should know. Members, mentors and admins all see it."} />
         <Field label="Title" value={form.title} onChangeText={(value) => { setForm((f) => ({ ...f, title: value })); setErrors((e) => ({ ...e, title: null })); }} placeholder="e.g. New counselling hours" required maxLength={160} error={errors.title} editable={!locked} />
         <Field label="Update" value={form.body} onChangeText={(value) => { setForm((f) => ({ ...f, body: value })); setErrors((e) => ({ ...e, body: null })); }} placeholder="Write the update…" required multiline maxLength={5000} error={errors.body} editable={!locked} />
         <ImageUploadField label="Picture" picked={image} existingUrl={editing?.imageUrl} existingRemoved={removeImage} onPick={(picked) => { setImage(picked); setRemoveImage(false); }} onRemove={() => { if (image) setImage(null); else setRemoveImage(true); }} disabled={locked} />

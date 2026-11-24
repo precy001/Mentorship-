@@ -13,7 +13,7 @@ export function looksLikePhoneNumber(value: string): boolean {
 export function counsellorInvitationText({ name, link }: { name?: string; link: string }): string {
   const first = (name ?? "").trim().split(/\s+/)[0];
   return [
-    `${first ? `Hi ${first}` : "Hi"}, you're invited to join Mentorship+ as a counsellor.`,
+    `${first ? `Hi ${first}` : "Hi"}, you're invited to join Mentorship+ as a mentor.`,
     "",
     "Open this link on your phone to accept (it expires in 7 days):",
     link,

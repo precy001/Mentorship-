@@ -19,7 +19,7 @@ const GROUPS: { title: string; subtitle: string; items: Activity[] }[] = [
     subtitle: "Check in and reach out when you need to.",
     items: [
       { title: "Wellbeing check-in", description: "Pause, name how you feel, and keep track over time.", slug: "wellness", icon: "heart-outline" },
-      { title: "Counselling discussions", description: "Start or continue a private discussion with your assigned counsellor.", slug: "counselling", icon: "chatbubble-ellipses-outline" },
+      { title: "Counselling discussions", description: "Start or continue a private discussion with your assigned mentor.", slug: "counselling", icon: "chatbubble-ellipses-outline" },
       { title: "My appointments", description: "Request a session and manage upcoming or past appointments.", slug: "booking", icon: "calendar-outline" },
     ],
   },

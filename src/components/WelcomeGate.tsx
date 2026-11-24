@@ -11,8 +11,8 @@ type Step = { icon: React.ComponentProps<typeof Ionicons>["name"]; title: string
 
 const MEMBER_STEPS: Step[] = [
   { icon: "compass-outline", title: "Explore resources, scholarships and grants", body: "Practical guides and funding opportunities chosen for your membership group." },
-  { icon: "chatbubble-ellipses-outline", title: "Talk to a counsellor", body: "Start a private discussion; we match you with a counsellor for your topic." },
-  { icon: "calendar-outline", title: "Book a session", body: "Pick a topic and a time and we will find a counsellor who is free." },
+  { icon: "chatbubble-ellipses-outline", title: "Talk to a mentor", body: "Start a private discussion; we match you with a mentor for your topic." },
+  { icon: "calendar-outline", title: "Book a session", body: "Pick a topic and a time and we will find a mentor who is free." },
 ];
 const COUNSELLOR_STEPS: Step[] = [
   { icon: "pricetags-outline", title: "Check your topics", body: "Administrators assign the topics you support." },
@@ -20,7 +20,7 @@ const COUNSELLOR_STEPS: Step[] = [
   { icon: "notifications-outline", title: "Watch your notifications", body: "New assignments and appointment requests appear in the bell." },
 ];
 const ADMIN_STEPS: Step[] = [
-  { icon: "people-outline", title: "Manage people", body: "Invite counsellors, assign topics and review accounts." },
+  { icon: "people-outline", title: "Manage people", body: "Invite mentors, assign topics and review accounts." },
   { icon: "library-outline", title: "Manage content", body: "Edit the starter resources and scholarships or publish your own." },
   { icon: "shield-checkmark-outline", title: "Review activity", body: "Moderate ratings and follow the audit log." },
 ];
@@ -85,7 +85,7 @@ export function WelcomeGate() {
                 {isMember ? (
                   <>
                     <Button title="Explore resources" icon="compass-outline" onPress={() => done("/(student)/explore")} />
-                    <Button title="Talk to a counsellor" icon="chatbubble-ellipses-outline" variant="secondary" onPress={() => done("/(student)/counselling")} />
+                    <Button title="Talk to a mentor" icon="chatbubble-ellipses-outline" variant="secondary" onPress={() => done("/(student)/counselling")} />
                     <Pressable accessibilityRole="button" onPress={() => done()} style={{ minHeight: 44, alignItems: "center", justifyContent: "center" }}>
                       <Text style={{ color: colors.muted, fontWeight: "700" }}>Maybe later</Text>
                     </Pressable>

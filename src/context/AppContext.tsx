@@ -153,7 +153,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       goals: goals.status === "fulfilled" ? goals.value.map(item => ({ id: item.id, title: typeof item.payload.title === "string" ? item.payload.title : "Personal goal", done: item.payload.done === true })) : current.goals,
       notifications: notifications.status === "fulfilled" ? toNotices(notifications.value.items) : current.notifications,
       unreadCount: unread.status === "fulfilled" ? unread.value.unread : current.unreadCount,
-      bookings: appointments.status === "fulfilled" ? appointments.value.map(item => ({ id: item.id, counsellor: item.counsellor.user.displayName || "Counsellor", date: new Date(item.startsAt).toLocaleDateString(), time: new Date(item.startsAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }), startsAt: item.startsAt, topic: item.topic?.name || "Counselling", status: item.status.toLowerCase() })) : current.bookings,
+      bookings: appointments.status === "fulfilled" ? appointments.value.map(item => ({ id: item.id, counsellor: item.counsellor.user.displayName || "Mentor", date: new Date(item.startsAt).toLocaleDateString(), time: new Date(item.startsAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }), startsAt: item.startsAt, topic: item.topic?.name || "Counselling", status: item.status.toLowerCase() })) : current.bookings,
     }));
   }, []);
 

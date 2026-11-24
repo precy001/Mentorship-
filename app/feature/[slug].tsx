@@ -99,7 +99,7 @@ export default function FeatureScreen() {
     const calendarDateValid = /^\d{4}-\d{2}-\d{2}$/.test(date) && start.getFullYear() === year && start.getMonth() === month - 1 && start.getDate() === day;
     const end = new Date(start.getTime() + 45 * 60 * 1000);
     if (!calendarDateValid || !Number.isFinite(start.getTime()) || start <= new Date()) return AppAlert.alert("Choose a valid time", "Appointments must be requested for a real future date and time.");
-    try { setSaving(true); await apiCreateAppointment({ topicId: selectedTopicId, startsAt: start.toISOString(), endsAt: end.toISOString(), notes: note.trim() || undefined }); setNote(""); const items = await apiListAppointments(); setAppointments(items); await app.refreshAccountData(); AppAlert.alert("Appointment requested", "Your request has been sent. It will appear as requested until the counsellor confirms it."); }
+    try { setSaving(true); await apiCreateAppointment({ topicId: selectedTopicId, startsAt: start.toISOString(), endsAt: end.toISOString(), notes: note.trim() || undefined }); setNote(""); const items = await apiListAppointments(); setAppointments(items); await app.refreshAccountData(); AppAlert.alert("Appointment requested", "Your request has been sent. It will appear as requested until the mentor confirms it."); }
     catch (error) { AppAlert.alert("Appointment not requested", error instanceof Error ? error.message : "Please choose another time."); }
     finally { setSaving(false); }
   };
@@ -111,7 +111,7 @@ export default function FeatureScreen() {
       setSaving(true);
       await apiRescheduleAppointment(item.id, startsAtIso, endsAtIso);
       setReschedulingId(null); setAppointments(await apiListAppointments()); await app.refreshAccountData();
-      AppAlert.alert("New time sent", "Your counsellor will be asked to confirm the new time.");
+      AppAlert.alert("New time sent", "Your mentor will be asked to confirm the new time.");
     } catch (error) { AppAlert.alert("Could not reschedule", error instanceof Error ? error.message : "Please choose another time."); }
     finally { setSaving(false); }
   };
@@ -140,13 +140,13 @@ export default function FeatureScreen() {
 
   return <Screen>
     <BackLink />
-    <Heading title={title} subtitle={slug === "ai" ? "Automated guidance is not a substitute for a qualified human counsellor." : undefined} />
+    <Heading title={title} subtitle={slug === "ai" ? "Automated guidance is not a substitute for a qualified human mentor." : undefined} />
 
-    {slug === "ai" && <EmptyState icon="chatbubbles-outline" title="Automated counselling is not available yet" message="We do not provide simulated AI conversations. You can start a private discussion with a human counsellor or request an appointment." actionLabel="Talk to a human counsellor" onAction={() => router.push("/(student)/counselling")} />}
+    {slug === "ai" && <EmptyState icon="chatbubbles-outline" title="Automated counselling is not available yet" message="We do not provide simulated AI conversations. You can start a private discussion with a human mentor or request an appointment." actionLabel="Talk to a human mentor" onAction={() => router.push("/(student)/counselling")} />}
 
     {slug === "booking" && <>
       <Card style={{ gap: 14 }}>
-        <Heading title="Request a counselling session" small subtitle="Select a topic and a future time. A suitable counsellor will be assigned based on topic and availability." />
+        <Heading title="Request a counselling session" small subtitle="Select a topic and a future time. A suitable mentor will be assigned based on topic and availability." />
         <Text style={{ color: colors.ink, fontWeight: "700", fontSize: 13 }}>Topic</Text>
         <View accessibilityRole="radiogroup" style={{ gap: 8 }}>
           {bookingTopics.map(item => <OptionCard key={item.id} title={item.name} description={item.description} selected={selectedTopicId === item.id} onPress={() => setSelectedTopicId(item.id)} />)}
@@ -155,7 +155,7 @@ export default function FeatureScreen() {
         <DatePickerField label="Appointment date" value={date} onChange={setDate} minDate={toDateString(new Date())} maxDate={`${new Date().getFullYear() + 2}-12-31`} required />
         <Text style={{ color: colors.ink, fontWeight: "700", fontSize: 13 }}>Start time</Text>
         <View accessibilityRole="radiogroup" style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>{TIME_SLOTS.map(t => <Chip key={t.value} label={t.label} accessibilityRole="radio" selected={time === t.value} onPress={() => setTime(t.value)} />)}</View>
-        <Field label="Note for your counsellor" optional value={note} onChangeText={setNote} placeholder="Anything the counsellor should know?" multiline maxLength={2000} editable={!saving} />
+        <Field label="Note for your mentor" optional value={note} onChangeText={setNote} placeholder="Anything the mentor should know?" multiline maxLength={2000} editable={!saving} />
         <Button title={saving ? "Requesting…" : "Request appointment"} loading={saving} disabled={!selectedTopicId} onPress={() => void requestAppointment()} />
       </Card>
       <SectionHeader title="Your appointments" />
@@ -165,9 +165,9 @@ export default function FeatureScreen() {
           <Pill label={humanize(item.status)} tone={appointmentTone(item.status)} />
         </View>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}><Ionicons name="calendar-outline" size={16} color={colors.muted} /><Text style={{ color: colors.ink, flex: 1 }}>{formatTimeRange(item.startsAt, item.endsAt)}</Text></View>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}><Ionicons name="person-outline" size={16} color={colors.muted} /><Text style={{ color: colors.muted, fontSize: 13, flex: 1 }}>{item.counsellor.user.displayName || "Assigned counsellor"}</Text></View>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}><Ionicons name="person-outline" size={16} color={colors.muted} /><Text style={{ color: colors.muted, fontSize: 13, flex: 1 }}>{item.counsellor.user.displayName || "Assigned mentor"}</Text></View>
         {item.status === "RESCHEDULED" && item.rescheduledById && item.rescheduledById !== app.user?.id ? <Button title="Confirm the new time" icon="checkmark" size="sm" onPress={() => void confirmProposedTime(item)} /> : null}
-        {item.status === "RESCHEDULED" && item.rescheduledById === app.user?.id ? <Text style={{ color: colors.muted, fontSize: 13 }}>Waiting for your counsellor to confirm the new time.</Text> : null}
+        {item.status === "RESCHEDULED" && item.rescheduledById === app.user?.id ? <Text style={{ color: colors.muted, fontSize: 13 }}>Waiting for your mentor to confirm the new time.</Text> : null}
         {["REQUESTED", "CONFIRMED", "RESCHEDULED"].includes(item.status) && new Date(item.startsAt).getTime() > Date.now() ? <Button title={reschedulingId === item.id ? "Hide reschedule" : "Reschedule"} icon="time-outline" variant="secondary" size="sm" onPress={() => setReschedulingId(current => current === item.id ? null : item.id)} /> : null}
         {reschedulingId === item.id ? <RescheduleForm startsAt={item.startsAt} endsAt={item.endsAt} busy={saving} onSubmit={(a, b) => void reschedule(item, a, b)} onClose={() => setReschedulingId(null)} /> : null}
         {["REQUESTED", "CONFIRMED", "RESCHEDULED"].includes(item.status) ? <Button title="Cancel appointment" variant="dangerSoft" size="sm" onPress={() => cancelAppointment(item)} /> : null}
@@ -203,9 +203,9 @@ export default function FeatureScreen() {
       {insights.needsSupport || lastSavedMood === "Low" || lastSavedMood === "Stressed" ? <Card style={{ gap: 10, backgroundColor: colors.brandSurface, borderColor: colors.brandBorder }}>
         <View style={{ flexDirection: "row", gap: 10, alignItems: "flex-start" }}>
           <Ionicons name="heart-circle-outline" size={24} color={colors.primary} />
-          <Text style={{ color: colors.ink, flex: 1, lineHeight: 21 }}>Thank you for being honest about how you feel. You don’t have to carry it alone — a counsellor can talk it through with you, privately.</Text>
+          <Text style={{ color: colors.ink, flex: 1, lineHeight: 21 }}>Thank you for being honest about how you feel. You don’t have to carry it alone — a mentor can talk it through with you, privately.</Text>
         </View>
-        <Button title="Talk to a counsellor" icon="chatbubble-ellipses-outline" size="sm" onPress={() => router.push("/(student)/counselling")} />
+        <Button title="Talk to a mentor" icon="chatbubble-ellipses-outline" size="sm" onPress={() => router.push("/(student)/counselling")} />
         <Text style={{ color: colors.muted, fontSize: 12, lineHeight: 17 }}>If you or someone else may be in immediate danger, contact your local emergency number straight away.</Text>
       </Card> : null}
 
@@ -321,8 +321,8 @@ export default function FeatureScreen() {
         ["Why do you ask for my NIN?", "Your National Identification Number is a required part of your profile. It is stored privately with your account. It is not yet checked against NIMC records, and the app does not claim that it has been verified."],
         ["Why can’t I see some grants or scholarships?", "Each opportunity is published for a particular group (for example students, or business owners and artisans). You see the ones that match the membership category in your profile. You can change your category under Profile."],
         ["Are scholarships verified?", "Opportunities are published by Mentorship+ administrators. Confirm eligibility and deadlines directly with the provider before applying."],
-        ["Can counsellors see my journal?", "Your private wellbeing entries are tied to your account and are not included in general administrator analytics or counsellor discussion access."],
-        ["Is automated AI counselling available?", "No. This build does not simulate AI conversations. You can contact a human counsellor through the counselling feature."]
+        ["Can mentors see my journal?", "Your private wellbeing entries are tied to your account and are not included in general administrator analytics or mentor discussion access."],
+        ["Is automated AI counselling available?", "No. This build does not simulate AI conversations. You can contact a human mentor through the counselling feature."]
       ].map(([q, a]) => <Card key={q} style={{ gap: 6 }}><Text accessibilityRole="header" style={{ color: colors.ink, fontWeight: "800", fontSize: 15 }}>{q}</Text><Text style={{ color: colors.muted, lineHeight: 21 }}>{a}</Text></Card>)}
     </>}
 

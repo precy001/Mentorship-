@@ -35,7 +35,7 @@ export default function StudentHome() {
     ...(isEducation ? [{ title: "Learning resources", slug: "resources", icon: "book-outline" as const }, { title: "Scholarships", slug: "scholarships", icon: "school-outline" as const }] : []),
     ...(isCareer ? [isBusinessFocused ? { title: "Business guidance", slug: "business", icon: "briefcase-outline" as const } : { title: "Career growth", slug: "career", icon: "trending-up-outline" as const }, { title: "Grants", slug: "grants", icon: "cash-outline" as const }] : []),
     ...(!isEducation && !isCareer ? [{ title: "Explore opportunities", slug: "explore", icon: "compass-outline" as const }] : []),
-    { title: "Speak to a counsellor", slug: "counselling", icon: "chatbubble-ellipses-outline" as const },
+    { title: "Speak to a mentor", slug: "counselling", icon: "chatbubble-ellipses-outline" as const },
     { title: "Book appointment", slug: "booking", icon: "calendar-outline" as const },
   ];
   const unread = app.unreadCount;

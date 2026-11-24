@@ -33,7 +33,7 @@ export default function CounsellorWorkspace() {
 
   const refresh = useCallback(async (silent = false) => {
     try { const [me, inbox, sessions] = await Promise.all([apiCounsellorMe(), apiListDiscussions(), apiListAppointments()]); setProfile(me); setDiscussions(inbox); setAppointments(sessions); }
-    catch (error) { if (!silent) AppAlert.alert("Counsellor workspace unavailable", error instanceof Error ? error.message : "Please try again."); }
+    catch (error) { if (!silent) AppAlert.alert("Mentor workspace unavailable", error instanceof Error ? error.message : "Please try again."); }
     finally { setLoading(false); }
   }, []);
   // Load on first visit, then quietly refresh whenever the workspace is shown again (new assignments, replies).
@@ -79,7 +79,7 @@ export default function CounsellorWorkspace() {
       <Avatar name={app.user?.name} uri={app.user?.avatarUrl} size={48} />
       <View style={{ flex: 1 }}>
         <Text style={{ color: colors.muted, fontSize: 13 }}>Welcome back</Text>
-        <Text accessibilityRole="header" numberOfLines={1} style={{ color: colors.ink, fontSize: 20, fontWeight: "800", letterSpacing: -0.4 }}>{app.user?.name || "Counsellor"}</Text>
+        <Text accessibilityRole="header" numberOfLines={1} style={{ color: colors.ink, fontSize: 20, fontWeight: "800", letterSpacing: -0.4 }}>{app.user?.name || "Mentor"}</Text>
       </View>
       <Pressable accessibilityRole="button" accessibilityLabel={app.unreadCount ? `Notifications, ${app.unreadCount} unread` : "Notifications"} onPress={() => router.push({ pathname: "/feature/[slug]", params: { slug: "notifications" } })} style={{ width: 44, height: 44, borderRadius: 14, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.line, alignItems: "center", justifyContent: "center" }}>
         <Ionicons name="notifications-outline" size={21} color={colors.ink} />

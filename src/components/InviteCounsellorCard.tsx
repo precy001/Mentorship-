@@ -105,10 +105,10 @@ export function InviteCounsellorCard({ topics, disabled, onInvited }: {
 
       {channel === "email" ? (
         <Field
-          label="Counsellor email address"
+          label="Mentor email address"
           value={email}
           onChangeText={(value) => { setEmail(value); if (errors.email) setErrors((current) => ({ ...current, email: null })); }}
-          placeholder="counsellor@example.com"
+          placeholder="mentor@example.com"
           keyboardType="email-address"
           autoCapitalize="none"
           autoCorrect={false}
@@ -154,7 +154,7 @@ export function InviteCounsellorCard({ topics, disabled, onInvited }: {
       {errors.topics ? <Text accessibilityLiveRegion="polite" style={{ color: colors.error, fontSize: 12, fontWeight: "600" }}>{errors.topics}</Text> : null}
 
       <Button
-        title={busy ? (channel === "email" ? "Sending…" : "Preparing invitation…") : channel === "email" ? "Send counsellor invitation" : "Invite on WhatsApp"}
+        title={busy ? (channel === "email" ? "Sending…" : "Preparing invitation…") : channel === "email" ? "Send mentor invitation" : "Invite on WhatsApp"}
         icon={channel === "whatsapp" ? "logo-whatsapp" : "mail-outline"}
         loading={busy}
         disabled={locked}
@@ -170,7 +170,7 @@ export function InviteCounsellorCard({ topics, disabled, onInvited }: {
       <Text style={{ color: colors.muted, fontSize: 12, lineHeight: 17 }}>
         {channel === "email"
           ? "They must sign in with this email address to accept. Invitations expire after seven days."
-          : "WhatsApp opens with the message ready; you tap Send. Whoever accepts becomes a counsellor for these topics. Invitations expire after seven days, and you can send up to 10 a day."}
+          : "WhatsApp opens with the message ready; you tap Send. Whoever accepts becomes a mentor for these topics. Invitations expire after seven days, and you can send up to 10 a day."}
       </Text>
     </Card>
   );

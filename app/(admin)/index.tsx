@@ -25,6 +25,7 @@ import {
 import { confirmAction, errorMessage, isSessionExpired, useToast } from "@/src/lib/feedback";
 import { DEFAULT_AUDIENCE, audienceLabel } from "@/src/lib/audience";
 import type { PickedImage } from "@/src/lib/imagePicker";
+import { mentorWording, roleLabel } from "@/src/lib/format";
 import { READ_MINUTES_MAX, READ_MINUTES_MIN, RESOURCE_CATEGORIES, SCHOLARSHIP_LEVELS, minutesFromReadTime, readTimeLabel, toOptions } from "@/src/lib/options";
 import {
   digitsOnly, endOfDayIso, formatDisplayDate, hasErrors, toDateString, validateChoice, validateDateString,
@@ -139,7 +140,7 @@ export default function AdminDashboard() {
   /* ---------------------------------------------------------------- data loading */
   const refresh = useCallback(async () => {
     setLoading(true);
-    const names = ["Dashboard", "Accounts", "Topics", "Resources", "Scholarships", "Service areas", "Ratings", "Unassigned discussions", "Appointments", "Audit trail", "Grants", "Membership groups", "Counsellor requests"];
+    const names = ["Dashboard", "Accounts", "Topics", "Resources", "Scholarships", "Service areas", "Ratings", "Unassigned discussions", "Appointments", "Audit trail", "Grants", "Membership groups", "Mentor requests"];
     const results = await Promise.allSettled([
       apiAdminDashboard(), apiAdminUsers(searchTerm.current), apiAdminTopics(), apiAdminResources(), apiAdminScholarships(),
       apiAdminServiceAreas(), apiAdminPendingRatings(), apiAdminUnassignedDiscussions(), apiAdminAppointments(), apiAdminAuditLogs(),
@@ -214,7 +215,7 @@ export default function AdminDashboard() {
 
   /* ---------------------------------------------------------------- accounts */
   const changeRole = async (user: AdminUser, role: AdminUser["role"]) => {
-    if (!(await confirmAction({ title: "Change account role", message: `Change ${user.email} from ${user.role} to ${role}?`, destructive: role === "MEMBER" }))) return;
+    if (!(await confirmAction({ title: "Change account role", message: `Change ${user.email} from ${roleLabel(user.role)} to ${roleLabel(role)}?`, destructive: role === "MEMBER" }))) return;
     await perform(`role-${user.id}`, "Role update failed", () => apiAdminSetRole(user.id, role), { title: "Role updated", message: `${user.email} is now ${role}.` });
   };
 
@@ -228,7 +229,7 @@ export default function AdminDashboard() {
     const assigned = user.counsellorProfile?.topics.map((item) => item.topic.id) ?? [];
     const next = assigned.length ? [] : topics.filter((topic) => topic.isActive).map((topic) => topic.id);
     if (!assigned.length && !next.length) return AppAlert.alert("No active topics", "Create or reactivate a counselling topic first.");
-    if (!(await confirmAction({ title: "Update counsellor topics", message: assigned.length ? `Remove all topic assignments for ${user.email}?` : `Assign all active topics to ${user.email}?`, destructive: assigned.length > 0 }))) return;
+    if (!(await confirmAction({ title: "Update mentor topics", message: assigned.length ? `Remove all topic assignments for ${user.email}?` : `Assign all active topics to ${user.email}?`, destructive: assigned.length > 0 }))) return;
     await perform(`topics-${user.id}`, "Assignment failed", () => apiAdminAssignTopics(user.id, next), { title: "Topics updated", message: assigned.length ? "All topic assignments were removed." : "All active topics were assigned." });
   };
 
@@ -236,7 +237,7 @@ export default function AdminDashboard() {
     const current = user.counsellorProfile?.topics.map((item) => item.topic.id) ?? [];
     const activeCurrent = current.filter((id) => topics.some((topic) => topic.id === id && topic.isActive));
     const next = current.includes(topicId) ? activeCurrent.filter((id) => id !== topicId) : [...activeCurrent, topicId];
-    await perform(`topic-${user.id}-${topicId}`, "Assignment failed", () => apiAdminAssignTopics(user.id, next), { title: "", message: "Counsellor topics updated.", toast: true });
+    await perform(`topic-${user.id}-${topicId}`, "Assignment failed", () => apiAdminAssignTopics(user.id, next), { title: "", message: "Mentor topics updated.", toast: true });
   };
 
   const setCounsellorAvailability = (user: AdminUser, availability: "AVAILABLE" | "OFFLINE" | "ON_LEAVE") =>
@@ -490,18 +491,18 @@ export default function AdminDashboard() {
 
   /* ---------------------------------------------------------------- moderation */
   const moderate = async (rating: PendingRating, status: "APPROVED" | "REJECTED") => {
-    if (status === "REJECTED" && !(await confirmAction({ title: "Reject rating", message: "This rating will not count towards the counsellor's average.", confirmText: "Reject", destructive: true }))) return;
+    if (status === "REJECTED" && !(await confirmAction({ title: "Reject rating", message: "This rating will not count towards the mentor's average.", confirmText: "Reject", destructive: true }))) return;
     await perform(`rating-${rating.id}`, status === "APPROVED" ? "Rating not approved" : "Rating not rejected", () => apiAdminModerateRating(rating.id, status), { title: "Rating moderated", message: `The rating was ${status.toLowerCase()}.` });
   };
 
   const decideCounsellorRequest = async (item: CounsellorRequest, approve: boolean) => {
     const who = item.applicant?.displayName || item.applicant?.email || "this person";
-    if (!(await confirmAction({ title: approve ? "Approve counsellor" : "Decline request", message: approve ? `${who} will become a counsellor with ${item.topics.length ? item.topics.map((t) => t.name).join(", ") : "no topics yet (assign them in Accounts)"}.` : `${who} will stay a member and be told the request was not approved.`, confirmText: approve ? "Approve" : "Decline", destructive: !approve }))) return;
-    await perform(`request-${item.id}`, approve ? "Request not approved" : "Request not declined", () => (approve ? apiAdminApproveCounsellorRequest(item.id) : apiAdminDeclineCounsellorRequest(item.id)), approve ? { title: "Counsellor approved", message: `${who} is now a counsellor and has been notified.` } : { title: "", message: "Request declined.", toast: true });
+    if (!(await confirmAction({ title: approve ? "Approve mentor" : "Decline request", message: approve ? `${who} will become a mentor with ${item.topics.length ? item.topics.map((t) => t.name).join(", ") : "no topics yet (assign them in Accounts)"}.` : `${who} will stay a member and be told the request was not approved.`, confirmText: approve ? "Approve" : "Decline", destructive: !approve }))) return;
+    await perform(`request-${item.id}`, approve ? "Request not approved" : "Request not declined", () => (approve ? apiAdminApproveCounsellorRequest(item.id) : apiAdminDeclineCounsellorRequest(item.id)), approve ? { title: "Mentor approved", message: `${who} is now a mentor and has been notified.` } : { title: "", message: "Request declined.", toast: true });
   };
 
   const autoAssign = (item: UnassignedDiscussion) =>
-    perform(`assign-${item.id}`, "Assignment failed", () => apiAdminAutoAssignDiscussion(item.id), { title: "Counsellor assigned", message: `“${item.title}” was assigned to an available counsellor.` });
+    perform(`assign-${item.id}`, "Assignment failed", () => apiAdminAutoAssignDiscussion(item.id), { title: "Mentor assigned", message: `“${item.title}” was assigned to an available mentor.` });
 
   const signOut = () =>
     AppAlert.alert("Sign out?", "Return to sign in?", [
@@ -559,7 +560,7 @@ export default function AdminDashboard() {
   const statTiles: { label: string; value: number; icon: IconName; tone?: "brand" | "green" | "amber" | "red" | "neutral"; highlight?: boolean }[] = stats ? [
     { label: "Total accounts", value: stats.users, icon: "people-outline" },
     { label: "Active members", value: stats.members, icon: "person-outline" },
-    { label: "Counsellors", value: stats.counsellors, icon: "chatbubbles-outline" },
+    { label: "Mentors", value: stats.counsellors, icon: "chatbubbles-outline" },
     { label: "Administrators", value: stats.admins, icon: "shield-checkmark-outline" },
     { label: "Active topics", value: stats.topics, icon: "pricetags-outline" },
     { label: "Open discussions", value: stats.openDiscussions, icon: "chatbubble-ellipses-outline" },
@@ -610,20 +611,20 @@ export default function AdminDashboard() {
             <Card style={adminCardStyle}>
               {title(attention ? "Needs your attention" : "Nothing needs attention", attention ? "These items are waiting on an administrator." : "There are no pending ratings or unassigned discussions.")}
               {pendingRatings.length ? <Row style={{ justifyContent: "space-between" }}><Text style={{ color: colors.ink, flex: 1 }}>{pendingRatings.length} {pendingRatings.length === 1 ? "rating" : "ratings"} awaiting moderation</Text><Button size="sm" title="Review" variant="secondary" onPress={() => switchSection("counselling")} /></Row> : null}
-              {unassignedDiscussions.length ? <Row style={{ justifyContent: "space-between" }}><Text style={{ color: colors.ink, flex: 1 }}>{unassignedDiscussions.length} {unassignedDiscussions.length === 1 ? "discussion" : "discussions"} awaiting a counsellor</Text><Button size="sm" title="Assign" variant="secondary" onPress={() => switchSection("counselling")} /></Row> : null}
-              {counsellorRequests.length ? <Row style={{ justifyContent: "space-between" }}><Text style={{ color: colors.ink, flex: 1 }}>{counsellorRequests.length} counsellor {counsellorRequests.length === 1 ? "request" : "requests"} to approve</Text><Button size="sm" title="Review" variant="secondary" onPress={() => switchSection("counselling")} /></Row> : null}
+              {unassignedDiscussions.length ? <Row style={{ justifyContent: "space-between" }}><Text style={{ color: colors.ink, flex: 1 }}>{unassignedDiscussions.length} {unassignedDiscussions.length === 1 ? "discussion" : "discussions"} awaiting a mentor</Text><Button size="sm" title="Assign" variant="secondary" onPress={() => switchSection("counselling")} /></Row> : null}
+              {counsellorRequests.length ? <Row style={{ justifyContent: "space-between" }}><Text style={{ color: colors.ink, flex: 1 }}>{counsellorRequests.length} mentor {counsellorRequests.length === 1 ? "request" : "requests"} to approve</Text><Button size="sm" title="Review" variant="secondary" onPress={() => switchSection("counselling")} /></Row> : null}
             </Card>
           ) : null}
           <Row style={{ flexWrap: "wrap", gap: 8 }}>
             <Button title="Post an update" icon="megaphone-outline" variant="secondary" size="sm" disabled={anyBusy} onPress={() => switchSection("news")} />
-            <Button title="Invite a counsellor" icon="person-add-outline" variant="secondary" size="sm" disabled={anyBusy} onPress={() => switchSection("accounts")} />
+            <Button title="Invite a mentor" icon="person-add-outline" variant="secondary" size="sm" disabled={anyBusy} onPress={() => switchSection("accounts")} />
           </Row>
           <Button title="Refresh platform data" icon="refresh" variant="secondary" loading={loading} disabled={anyBusy} onPress={() => void refresh()} />
         </> : null}
 
         {section === "news" ? <>
         {/* ------------------------------------------------ news & updates */}
-        {h("News & updates", "Posts here appear in everyone’s News & updates: members, counsellors and administrators.")}
+        {h("News & updates", "Posts here appear in everyone’s News & updates: members, mentors and administrators.")}
         <AdminNewsPanel disabled={anyBusy} onToast={showToast} />
         </> : null}
 
@@ -650,15 +651,15 @@ export default function AdminDashboard() {
               </Row>
               <View style={{ gap: 8 }}>
                 <Row style={{ gap: 6, flexWrap: "wrap" }}>
-                  <Pill label={user.role} tone={user.role === "ADMIN" || user.role === "SUPER_ADMIN" ? "green" : "blue"} />
+                  <Pill label={roleLabel(user.role)} tone={user.role === "ADMIN" || user.role === "SUPER_ADMIN" ? "green" : "blue"} />
                   <Pill label={user.status} tone={user.status === "ACTIVE" ? "green" : "red"} />
                   <Pill label={user.emailVerifiedAt ? "Email verified" : "Unverified"} tone={user.emailVerifiedAt ? "green" : "red"} />
                 </Row>
                 {user.role === "COUNSELLOR" && user.counsellorProfile ? <Text style={{ color: colors.muted, fontSize: 12 }}>Topics: {user.counsellorProfile.topics.map((t) => t.topic.name).join(", ") || "None assigned"}</Text> : null}
               </View>
               <Row style={{ flexWrap: "wrap", gap: 8 }}>
-                {user.role === "MEMBER" ? <Button size="sm" title="Make counsellor" loading={isBusy(`role-${user.id}`)} disabled={anyBusy} onPress={() => void changeRole(user, "COUNSELLOR")} /> : null}
-                {user.role === "COUNSELLOR" ? <Button size="sm" title="Remove counsellor role" variant="secondary" loading={isBusy(`role-${user.id}`)} disabled={anyBusy} onPress={() => void changeRole(user, "MEMBER")} /> : null}
+                {user.role === "MEMBER" ? <Button size="sm" title="Make mentor" loading={isBusy(`role-${user.id}`)} disabled={anyBusy} onPress={() => void changeRole(user, "COUNSELLOR")} /> : null}
+                {user.role === "COUNSELLOR" ? <Button size="sm" title="Remove mentor role" variant="secondary" loading={isBusy(`role-${user.id}`)} disabled={anyBusy} onPress={() => void changeRole(user, "MEMBER")} /> : null}
                 {user.role === "COUNSELLOR" ? <Button size="sm" title={user.counsellorProfile?.topics.length ? "Clear all topics" : "Assign all topics"} variant="secondary" loading={isBusy(`topics-${user.id}`)} disabled={anyBusy} onPress={() => void assignAllTopics(user)} /> : null}
                 {isSuperAdmin && user.role === "MEMBER" && user.id !== app.user?.id ? <Button size="sm" title="Make admin" variant="secondary" loading={isBusy(`role-${user.id}`)} disabled={anyBusy} onPress={() => void changeRole(user, "ADMIN")} /> : null}
                 {isSuperAdmin && user.role === "ADMIN" ? <Button size="sm" title="Revoke admin" variant="danger" loading={isBusy(`role-${user.id}`)} disabled={anyBusy} onPress={() => void changeRole(user, "MEMBER")} /> : null}
@@ -694,7 +695,7 @@ export default function AdminDashboard() {
         {!users.length && !loading ? emptyCard(searchTerm.current ? `No accounts match “${searchTerm.current}”.` : "No accounts were found.") : null}
 
         {/* ------------------------------------------------ invitations */}
-        {h("Invite a counsellor", "Invite someone to become a counsellor by email or on WhatsApp. Only administrators can invite counsellors.")}
+        {h("Invite a mentor", "Invite someone to become a mentor by email or on WhatsApp. Only administrators can invite mentors.")}
         <InviteCounsellorCard topics={activeTopics} disabled={anyBusy} onInvited={() => void refresh()} />
 
         </> : null}
@@ -703,15 +704,15 @@ export default function AdminDashboard() {
         {/* ------------------------------------------------ counsellor requests (legacy) */}
         {/* Only shown while requests remain from before invitations became admin-only (counsellors used to be able
             to share invitations, which then needed approval). New invitations never create requests. */}
-        {counsellorRequests.length ? h("Counsellor requests", `People who accepted an invitation a counsellor shared before invitations became admin-only · ${counsellorRequests.length} waiting for approval.`) : null}
+        {counsellorRequests.length ? h("Mentor requests", `People who accepted an invitation a mentor shared before invitations became admin-only · ${counsellorRequests.length} waiting for approval.`) : null}
         {counsellorRequests.map((item) => (
           <Card key={item.id} style={adminCardStyle}>
             <Row style={{ gap: 12, alignItems: "flex-start" }}>
               <Avatar name={item.applicant?.displayName || item.applicant?.email} size={44} />
               <View style={{ flex: 1, gap: 3 }}>
-                <Text style={{ color: colors.ink, fontWeight: "800" }}>{item.applicant?.displayName || item.inviteeName || "New counsellor"}</Text>
+                <Text style={{ color: colors.ink, fontWeight: "800" }}>{item.applicant?.displayName || item.inviteeName || "New mentor"}</Text>
                 <Text style={{ color: colors.muted, fontSize: 12 }}>{item.applicant?.email}{item.phoneNumber ? ` · WhatsApp +${item.phoneNumber}` : ""}</Text>
-                <Text style={{ color: colors.muted, fontSize: 12 }}>Invited by {item.invitedBy?.displayName || item.invitedBy?.email || "a counsellor"}{item.acceptedAt ? ` · accepted ${formatDisplayDate(item.acceptedAt)}` : ""}</Text>
+                <Text style={{ color: colors.muted, fontSize: 12 }}>Invited by {item.invitedBy?.displayName || item.invitedBy?.email || "a mentor"}{item.acceptedAt ? ` · accepted ${formatDisplayDate(item.acceptedAt)}` : ""}</Text>
                 <Text style={{ color: colors.primaryDark, fontSize: 12, fontWeight: "700" }}>Topics: {item.topics.length ? item.topics.map((t) => t.name).join(", ") : "none yet"}</Text>
               </View>
             </Row>
@@ -723,7 +724,7 @@ export default function AdminDashboard() {
         ))}
 
         {/* ------------------------------------------------ appointments */}
-        {h("Appointment oversight", `Review appointment requests and their current status · ${appointments.length} records. Members and assigned counsellors manage changes.`)}
+        {h("Appointment oversight", `Review appointment requests and their current status · ${appointments.length} records. Members and assigned mentors manage changes.`)}
         {visibleItems("appointments", appointments).map((item) => (
           <Card key={item.id} style={adminCardStyle}>
             <Row style={{ justifyContent: "space-between" }}>
@@ -738,19 +739,19 @@ export default function AdminDashboard() {
         {!appointments.length && !loading ? emptyCard("No appointment records yet.") : null}
 
         {/* ------------------------------------------------ discussions */}
-        {h("Unassigned counselling discussions", `Automatically assign open discussions to an available counsellor with the matching topic and lowest current load · ${unassignedDiscussions.length} awaiting assignment.`)}
+        {h("Unassigned counselling discussions", `Automatically assign open discussions to an available mentor with the matching topic and lowest current load · ${unassignedDiscussions.length} awaiting assignment.`)}
         {visibleItems("unassignedDiscussions", unassignedDiscussions).map((item) => (
           <Card key={item.id} style={adminCardStyle}>
             <Text style={{ color: colors.ink, fontWeight: "800" }}>{item.title}</Text>
             <Text style={{ color: colors.muted, fontSize: 12 }}>{item.topic.name} · {item.creator.displayName || item.creator.email} · {item._count.messages} messages</Text>
-            <Button title="Auto-assign counsellor" loading={isBusy(`assign-${item.id}`)} disabled={anyBusy} onPress={() => void autoAssign(item)} />
+            <Button title="Auto-assign mentor" loading={isBusy(`assign-${item.id}`)} disabled={anyBusy} onPress={() => void autoAssign(item)} />
           </Card>
         ))}
         {renderSectionToggle("unassignedDiscussions", unassignedDiscussions.length)}
         {!unassignedDiscussions.length && !loading ? emptyCard("There are no unassigned discussions.") : null}
 
         {/* ------------------------------------------------ ratings */}
-        {h("Counsellor rating moderation", `Only approved ratings contribute to public counsellor averages · ${pendingRatings.length} awaiting review.`)}
+        {h("Mentor rating moderation", `Only approved ratings contribute to public mentor averages · ${pendingRatings.length} awaiting review.`)}
         {visibleItems("pendingRatings", pendingRatings).map((rating) => (
           <Card key={rating.id} style={adminCardStyle}>
             <Text style={{ color: colors.ink, fontWeight: "800" }}>{rating.score}/5 · {rating.counsellor.user.displayName || rating.counsellor.user.email}</Text>
@@ -778,7 +779,7 @@ export default function AdminDashboard() {
             <Row style={{ justifyContent: "space-between" }}>
               <View style={{ flex: 1, gap: 4 }}>
                 <Text style={{ color: colors.ink, fontWeight: "800" }}>{topic.name}</Text>
-                <Text style={{ color: colors.muted, fontSize: 12 }}>{topic.description || "No description"} · {topic._count.counsellors} counsellors · {topic._count.discussions} discussions</Text>
+                <Text style={{ color: colors.muted, fontSize: 12 }}>{topic.description || "No description"} · {topic._count.counsellors} mentors · {topic._count.discussions} discussions</Text>
               </View>
               <Pill label={topic.isActive ? "Active" : "Inactive"} tone={topic.isActive ? "green" : "red"} />
             </Row>
@@ -964,7 +965,7 @@ export default function AdminDashboard() {
         {!serviceAreas.length && !loading ? emptyCard("No service areas are configured. Add the first LCDA above.") : null}
 
         {/* ------------------------------------------------ policies */}
-        {h("Policy & Guidelines", "The page members and counsellors open from their profile and workspace. Its content will be added here later.")}
+        {h("Policy & Guidelines", "The page members and mentors open from their profile and workspace. Its content will be added here later.")}
         <Card style={adminCardStyle}>
           <Button title="Open Policy & Guidelines" icon="document-text-outline" variant="secondary" onPress={() => router.push("/policies")} />
         </Card>
@@ -973,8 +974,8 @@ export default function AdminDashboard() {
         {h("Administrative audit trail", `Recent account, topic, content, appointment and moderation actions · ${auditLogs.length} entries.`)}
         {visibleItems("auditLogs", auditLogs).map((log) => (
           <Card key={log.id} style={adminCardStyle}>
-            <Text style={{ color: colors.ink, fontWeight: "800" }}>{log.action.replaceAll("_", " ")}</Text>
-            <Text style={{ color: colors.muted, fontSize: 12 }}>{log.actor?.displayName || log.actor?.email || "System"} · {log.entityType}{log.entityId ? ` · ${log.entityId}` : ""}</Text>
+            <Text style={{ color: colors.ink, fontWeight: "800" }}>{mentorWording(log.action.replaceAll("_", " "))}</Text>
+            <Text style={{ color: colors.muted, fontSize: 12 }}>{log.actor?.displayName || log.actor?.email || "System"} · {mentorWording(log.entityType)}{log.entityId ? ` · ${log.entityId}` : ""}</Text>
             <Text style={{ color: colors.muted, fontSize: 11 }}>{new Date(log.createdAt).toLocaleString()}</Text>
           </Card>
         ))}
@@ -983,7 +984,7 @@ export default function AdminDashboard() {
         </> : null}
 
         <Text style={{ color: colors.muted, fontSize: 11, lineHeight: 17 }}>
-          Sensitive member wellbeing entries are not exposed in this dashboard. Discussion access is restricted to the member, their assigned counsellor and authorised administrators.
+          Sensitive member wellbeing entries are not exposed in this dashboard. Discussion access is restricted to the member, their assigned mentor and authorised administrators.
         </Text>
       </Screen>
       <Toast toast={toast} onDismiss={hideToast} />

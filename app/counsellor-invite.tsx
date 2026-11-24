@@ -34,10 +34,10 @@ export default function CounsellorInvite() {
       // Reload the account: the app switches to the counsellor workspace by itself (app/_layout.tsx).
       try {
         app.applyAccount(await apiMe());
-        AppAlert.alert("Invitation accepted", "You are now a counsellor. Set yourself to Available when you're ready to receive discussions.", [{ text: "Open workspace", onPress: () => router.replace("/(counsellor)") }]);
+        AppAlert.alert("Invitation accepted", "You are now a mentor. Set yourself to Available when you're ready to receive discussions.", [{ text: "Open workspace", onPress: () => router.replace("/(counsellor)") }]);
       } catch {
         await app.logout();
-        AppAlert.alert("Invitation accepted", `${result.email} is now a counsellor. Sign in again to open the counsellor workspace.`, [{ text: "Sign in", onPress: () => router.replace({ pathname: "/auth", params: { mode: "signin" } }) }]);
+        AppAlert.alert("Invitation accepted", `${result.email} is now a mentor. Sign in again to open the mentor workspace.`, [{ text: "Sign in", onPress: () => router.replace({ pathname: "/auth", params: { mode: "signin" } }) }]);
       }
     } catch (error) { AppAlert.alert("Invitation could not be accepted", error instanceof Error ? error.message : "Please contact the administrator who invited you."); }
     finally { setWorking(false); }
@@ -47,7 +47,7 @@ export default function CounsellorInvite() {
     <BackLink onPress={() => leaveScreen(app.user?.role)} />
     <View style={{ gap: 16 }}>
       <IconBadge icon="people-outline" size={52} />
-      <Heading title="Counsellor invitation" subtitle="Accept your invitation to join the Mentorship+ counselling team." />
+      <Heading title="Mentor invitation" subtitle="Accept your invitation to join the Mentorship+ counselling team." />
       {!token ? (
         <View accessibilityRole="alert" style={{ flexDirection: "row", gap: 10, backgroundColor: colors.warningBg, padding: 14, borderRadius: 16 }}>
           <Ionicons name="warning-outline" size={20} color={colors.warning} />

@@ -245,14 +245,14 @@ export default function DiscussionDetail() {
           variant={isMember ? "dangerSoft" : "secondary"}
           size="sm"
           icon={isMember ? "close-circle-outline" : "checkmark-circle-outline"}
-          onPress={() => AppAlert.alert("Close discussion?", "This will end the active discussion and release the counsellor assignment.", [{ text: "Keep open", style: "cancel" }, { text: "Confirm", style: "destructive", onPress: () => void close() }])}
+          onPress={() => AppAlert.alert("Close discussion?", "This will end the active discussion and release the mentor assignment.", [{ text: "Keep open", style: "cancel" }, { text: "Confirm", style: "destructive", onPress: () => void close() }])}
         /> : null}
       </Card>
 
       {discussion.messages.map(item => {
         const mine = item.author.id === me;
         const counsellor = item.author.role === "COUNSELLOR";
-        const author = item.author.displayName || (counsellor ? "Counsellor" : "Member");
+        const author = item.author.displayName || (counsellor ? "Mentor" : "Member");
         const receipt = mine ? receiptFor(item) : null;
         return <View
           key={item.id}
@@ -303,8 +303,8 @@ export default function DiscussionDetail() {
 
       {discussion.status === "COMPLETED" && isMember && existingRating ? <Pill label={`Rating submitted · ${existingRating.score}/5 · ${humanize(existingRating.moderationStatus)}`} tone="green" /> : null}
       {discussion.status === "COMPLETED" && isMember && !ratingSent ? <Card>
-        <Heading title="Rate your counsellor" small subtitle="Your rating will be reviewed before it contributes to the counsellor's public average." />
-        <StarRating value={rating} onChange={setRating} label="Rate your counsellor" />
+        <Heading title="Rate your mentor" small subtitle="Your rating will be reviewed before it contributes to the mentor's public average." />
+        <StarRating value={rating} onChange={setRating} label="Rate your mentor" />
         <Field label="Feedback" optional value={feedback} onChangeText={setFeedback} placeholder="Share your experience" multiline maxLength={1000} editable={!submittingRating} />
         <Button title="Submit rating" loading={submittingRating} disabled={!rating} onPress={() => void submitRating()} />
       </Card> : null}

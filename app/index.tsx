@@ -16,7 +16,7 @@ const MAX_WIDTH = 480;
 
 type IconName = React.ComponentProps<typeof Ionicons>["name"];
 const CHIPS: { icon: IconName; label: string; tint: string; color: string }[] = [
-  { icon: "chatbubble-ellipses", label: "Counsellors", tint: colors.accentTint, color: colors.primary },
+  { icon: "chatbubble-ellipses", label: "Mentors", tint: colors.accentTint, color: colors.primary },
   { icon: "book", label: "Resources", tint: "#DCFCE7", color: colors.success },
   { icon: "school", label: "Scholarships", tint: colors.accentTint, color: colors.primary },
 ];
@@ -166,7 +166,7 @@ export default function Welcome() {
             <Text accessibilityRole="header" style={{ color: colors.ink, fontSize: headline, lineHeight: Math.round(headline * 1.12), letterSpacing: -1.2, fontWeight: "800" }}>
               Your next chapter{"\n"}<Text style={{ color: colors.primary }}>starts here.</Text>
             </Text>
-            <Text style={{ color: colors.muted, fontSize: 15, lineHeight: 23, maxWidth: 340 }}>Learning, career discovery, wellbeing and real counsellors, together in one thoughtful space.</Text>
+            <Text style={{ color: colors.muted, fontSize: 15, lineHeight: 23, maxWidth: 340 }}>Learning, career discovery, wellbeing and real mentors, together in one thoughtful space.</Text>
           </Animated.View>
 
           {/* Actions */}

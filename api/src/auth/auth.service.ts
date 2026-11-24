@@ -193,7 +193,7 @@ export class AuthService {
         data: { consumedAt: new Date() },
       }),
       this.prisma.userNotification.create({
-        data: { userId: token.userId, type: 'ACCOUNT', title: 'Welcome to Mentorship+', body: 'Your email is verified. Explore resources, start a private discussion with a counsellor, or book a session.' },
+        data: { userId: token.userId, type: 'ACCOUNT', title: 'Welcome to Mentorship+', body: 'Your email is verified. Explore resources, start a private discussion with a mentor, or book a session.' },
       }),
     ]);
     await this.writeAudit(token.userId, 'AUTH_EMAIL_VERIFIED', 'User', token.userId);

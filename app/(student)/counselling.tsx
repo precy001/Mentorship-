@@ -120,14 +120,14 @@ export default function Counselling() {
       <BackLink onPress={backToHome} />
       <Heading
         title="You don’t have to do it alone"
-        subtitle="Start a private discussion with a counsellor assigned to your chosen topic."
+        subtitle="Start a private discussion with a mentor assigned to your chosen topic."
       />
 
       <HeroCard
         tone="primary"
         icon="shield-checkmark-outline"
         title="A real conversation, handled securely."
-        body="Your discussion is visible to you, your assigned counsellor and authorised administrators. The system only assigns counsellors who cover your topic and have capacity."
+        body="Your discussion is visible to you, your assigned mentor and authorised administrators. The system only assigns mentors who cover your topic and have capacity."
       />
 
       <Card>
@@ -165,7 +165,7 @@ export default function Counselling() {
           label="Opening message"
           value={message}
           onChangeText={setMessage}
-          placeholder="Share a little context to help your counsellor understand…"
+          placeholder="Share a little context to help your mentor understand…"
           multiline
           maxLength={MESSAGE_MAX}
           error={messageError}

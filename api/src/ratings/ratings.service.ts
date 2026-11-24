@@ -7,12 +7,12 @@ import { createNotification } from '../notifications/notifications.service';
 export class RatingsService {
   constructor(private readonly prisma: PrismaService) {}
   async create(user: AuthenticatedUser, input: { discussionId?: string; appointmentId?: string; score: number; feedback?: string }) {
-    if (user.role !== UserRole.MEMBER) throw new ForbiddenException('Only members can submit counsellor ratings.');
+    if (user.role !== UserRole.MEMBER) throw new ForbiddenException('Only members can submit mentor ratings.');
     if (Boolean(input.discussionId) === Boolean(input.appointmentId)) throw new BadRequestException('Rate one completed discussion or one completed appointment.');
     let counsellorId: string;
     if (input.discussionId) {
       const discussion = await this.prisma.discussion.findFirst({ where: { id: input.discussionId, creatorId: user.id, status: DiscussionStatus.COMPLETED }, include: { assignments: { orderBy: { assignedAt: 'desc' }, take: 1 } } });
-      if (!discussion || !discussion.assignments[0]) throw new BadRequestException('Only a completed discussion with an assigned counsellor can be rated.');
+      if (!discussion || !discussion.assignments[0]) throw new BadRequestException('Only a completed discussion with an assigned mentor can be rated.');
       counsellorId = discussion.assignments[0].counsellorId;
     } else {
       const appointmentId = input.appointmentId;

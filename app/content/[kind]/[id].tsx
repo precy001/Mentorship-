@@ -146,8 +146,8 @@ export default function ContentDetail() {
 
     <Card style={{ gap: 10, backgroundColor: colors.brandSurface, borderColor: colors.brandBorder }}>
       <Text style={{ color: colors.ink, fontWeight: "800" }}>Want help with this?</Text>
-      <Text style={{ color: colors.muted, lineHeight: 20 }}>A counsellor can help you plan your next step{detail.kind === "resource" ? "" : " or prepare your application"}.</Text>
-      <Button title="Talk to a counsellor" icon="chatbubble-ellipses-outline" size="sm" variant="secondary" onPress={() => router.push("/(student)/counselling")} />
+      <Text style={{ color: colors.muted, lineHeight: 20 }}>A mentor can help you plan your next step{detail.kind === "resource" ? "" : " or prepare your application"}.</Text>
+      <Button title="Talk to a mentor" icon="chatbubble-ellipses-outline" size="sm" variant="secondary" onPress={() => router.push("/(student)/counselling")} />
     </Card>
   </Screen>;
 }

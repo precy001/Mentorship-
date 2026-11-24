@@ -86,7 +86,7 @@ export class AppointmentsService {
         }
         choices.sort((a, b) => a.active - b.active || a.load - b.load);
         const chosen = choices[0];
-        if (!chosen) throw new BadRequestException('No counsellor is available for that topic and time. Choose another time or topic.');
+        if (!chosen) throw new BadRequestException('No mentor is available for that topic and time. Choose another time or topic.');
 
         const appointment = await tx.appointment.create({
           data: { memberId: user.id, counsellorId: chosen.id, topicId: topic.id, startsAt, endsAt, notes: input.notes?.trim() || null, status: AppointmentStatus.REQUESTED },
@@ -94,7 +94,7 @@ export class AppointmentsService {
         });
 
         await createNotification(tx, appointment.counsellor.user.id, 'New appointment request', `A member requested a ${topic.name} appointment. Open your workspace to confirm it.`, 'APPOINTMENT');
-        await createNotification(tx, user.id, 'Appointment requested', `Your ${topic.name} appointment request was sent to ${appointment.counsellor.user.displayName || 'a counsellor'}. You will be notified when it is confirmed.`, 'APPOINTMENT');
+        await createNotification(tx, user.id, 'Appointment requested', `Your ${topic.name} appointment request was sent to ${appointment.counsellor.user.displayName || 'a mentor'}. You will be notified when it is confirmed.`, 'APPOINTMENT');
         await tx.auditLog.create({ data: { actorId: user.id, action: 'APPOINTMENT_REQUESTED', entityType: 'Appointment', entityId: appointment.id } });
         return appointment;
       },
@@ -116,13 +116,13 @@ export class AppointmentsService {
     if (appointment.startsAt <= new Date()) throw new BadRequestException('This appointment has already started and cannot be rescheduled.');
     const unavailable: CounsellorAvailability[] = [CounsellorAvailability.OFFLINE, CounsellorAvailability.ON_LEAVE, CounsellorAvailability.SUSPENDED];
     if (appointment.counsellor.user.status !== 'ACTIVE' || unavailable.includes(appointment.counsellor.availability)) {
-      throw new BadRequestException('The counsellor is not taking appointments right now. Cancel this request and book a new one.');
+      throw new BadRequestException('The mentor is not taking appointments right now. Cancel this request and book a new one.');
     }
 
     return this.prisma.$transaction(
       async (tx) => {
         const counsellorClash = await tx.appointment.count({ where: { id: { not: id }, counsellorId: appointment.counsellor.id, status: { in: OPEN_APPOINTMENT_STATUSES }, startsAt: { lt: endsAt }, endsAt: { gt: startsAt } } });
-        if (counsellorClash) throw new BadRequestException('The counsellor is not free at that time. Choose another time.');
+        if (counsellorClash) throw new BadRequestException('The mentor is not free at that time. Choose another time.');
         const memberClash = await tx.appointment.count({ where: { id: { not: id }, memberId: appointment.memberId, status: { in: OPEN_APPOINTMENT_STATUSES }, startsAt: { lt: endsAt }, endsAt: { gt: startsAt } } });
         if (memberClash) throw new BadRequestException('The member already has an appointment at that time.');
 
@@ -165,10 +165,10 @@ export class AppointmentsService {
     const proposedByActor = appointment.status === AppointmentStatus.RESCHEDULED && appointment.rescheduledById === user.id;
     if (isMember && !isAdmin) {
       const isMemberApproval = status === AppointmentStatus.CONFIRMED && appointment.status === AppointmentStatus.RESCHEDULED && !proposedByActor;
-      if (status !== AppointmentStatus.CANCELLED && !isMemberApproval) throw new ForbiddenException('Members can cancel their appointments or confirm a time proposed by their counsellor.');
+      if (status !== AppointmentStatus.CANCELLED && !isMemberApproval) throw new ForbiddenException('Members can cancel their appointments or confirm a time proposed by their mentor.');
     }
     if (isCounsellor && !isAdmin) {
-      if (status === AppointmentStatus.CANCELLED) throw new BadRequestException('Counsellors cannot cancel member appointment requests. Propose a new time instead.');
+      if (status === AppointmentStatus.CANCELLED) throw new BadRequestException('Mentors cannot cancel member appointment requests. Propose a new time instead.');
       if (status === AppointmentStatus.CONFIRMED && proposedByActor) throw new BadRequestException('The member must confirm a time you proposed.');
     }
 

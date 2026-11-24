@@ -32,7 +32,7 @@ const escapeHtml = (value: string) => value.replace(/[&<>"']/g, (char) => ({ '&'
 
 export function renderPage(appLink: string | null): string {
   const body = appLink
-    ? `<h1>You're invited to join Mentorship+ as a counsellor</h1>
+    ? `<h1>You're invited to join Mentorship+ as a mentor</h1>
        <p>Tap the button on the phone where Mentorship+ is installed.</p>
        <a class="button" href="${escapeHtml(appLink)}">Open in Mentorship+</a>
        <ol>

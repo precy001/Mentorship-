@@ -283,7 +283,7 @@ export class AdminService {
       const discussionIds = [...new Set(activeAssignments.map(item => item.discussionId))];
       const affectedDiscussions = await tx.discussion.findMany({ where: { id: { in: discussionIds } }, select: { creatorId: true, title: true } });
       for (const affected of affectedDiscussions) {
-        await createNotification(tx, affected.creatorId, 'Your discussion is being reassigned', `Your counsellor is no longer available for “${affected.title}”. We will assign another counsellor as soon as one is available.`, 'DISCUSSION');
+        await createNotification(tx, affected.creatorId, 'Your discussion is being reassigned', `Your mentor is no longer available for “${affected.title}”. We will assign another mentor as soon as one is available.`, 'DISCUSSION');
       }
       await tx.discussion.updateMany({ where: { id: { in: discussionIds } }, data: { status: DiscussionStatus.REASSIGNMENT_REQUIRED } });
       await tx.discussionAssignment.updateMany({ where: { counsellorId, discussionId: { in: discussionIds }, releasedAt: null }, data: { releasedAt: new Date(), releaseReason: reason } });
@@ -292,7 +292,7 @@ export class AdminService {
     if (affectedAppointments.length) {
       await tx.appointment.updateMany({ where: { id: { in: affectedAppointments.map(item => item.id) } }, data: { status: AppointmentStatus.CANCELLED } });
       for (const appointment of affectedAppointments) {
-        await tx.userNotification.create({ data: { userId: appointment.memberId, title: 'Appointment cancelled', body: `Your ${appointment.topic?.name || 'counselling'} appointment was cancelled because the assigned counsellor is no longer available. Please request another session.`, type: 'APPOINTMENT' } });
+        await tx.userNotification.create({ data: { userId: appointment.memberId, title: 'Appointment cancelled', body: `Your ${appointment.topic?.name || 'counselling'} appointment was cancelled because the assigned mentor is no longer available. Please request another session.`, type: 'APPOINTMENT' } });
       }
     }
     await tx.counsellorProfile.update({ where: { id: counsellorId }, data: { availability: CounsellorAvailability.OFFLINE } });
@@ -310,7 +310,7 @@ export class AdminService {
       const updated = await tx.user.update({ where: { id: userId }, data: { role }, select: { id: true, email: true, displayName: true, role: true, status: true } });
       if (role === UserRole.COUNSELLOR) {
         await tx.counsellorProfile.upsert({ where: { userId }, create: { userId, availability: CounsellorAvailability.OFFLINE }, update: {} });
-        await createNotification(tx, userId, 'You are now a counsellor', 'An administrator gave your account counsellor access. Ask an administrator to assign your topics, then set yourself to Available to receive discussions.', 'COUNSELLOR');
+        await createNotification(tx, userId, 'You are now a mentor', 'An administrator gave your account mentor access. Ask an administrator to assign your topics, then set yourself to Available to receive discussions.', 'COUNSELLOR');
       } else if (target.counsellorProfile) {
         // Preserve history, release active work and let an administrator reassign affected discussions.
         await this.releaseCounsellorWork(tx, target.counsellorProfile.id, 'COUNSELLOR_ROLE_REVOKED');
@@ -351,13 +351,13 @@ export class AdminService {
     const base = (this.config.get<string>('AUTH_COUNSELLOR_INVITATION_URL') || 'guidanceplus://counsellor-invite').replace(/\/$/, '');
     const actionUrl = `${base}${base.includes('?') ? '&' : '?'}token=${encodeURIComponent(rawToken)}`;
     try {
-      await this.mail.sendActionEmail(email, 'Your Mentorship+ counsellor invitation', actionUrl, 'invite');
+      await this.mail.sendActionEmail(email, 'Your Mentorship+ mentor invitation', actionUrl, 'invite');
     } catch (error) {
       await this.prisma.counsellorInvitation.updateMany({ where: { tokenHash, acceptedAt: null }, data: { acceptedAt: new Date() } });
       throw error;
     }
     await this.prisma.auditLog.create({ data: { actorId: actor.id, action: 'COUNSELLOR_INVITED', entityType: 'CounsellorInvitation', entityId: email, metadata: { topicIds: uniqueTopicIds } } });
-    return { message: 'Counsellor invitation sent. It expires in seven days.' };
+    return { message: 'Mentor invitation sent. It expires in seven days.' };
   }
 
   /** How many WhatsApp invitations one person may create in 24 hours. */
@@ -374,7 +374,7 @@ export class AdminService {
    * for it. The invitation is approved at creation, so accepting it makes the person a counsellor straight away.
    */
   async inviteCounsellorByWhatsApp(actor: AuthenticatedUser, input: { phoneNumber: string; name?: string; topicIds?: string[] }) {
-    if (actor.role !== UserRole.ADMIN && actor.role !== UserRole.SUPER_ADMIN) throw new ForbiddenException('Only administrators can invite counsellors.');
+    if (actor.role !== UserRole.ADMIN && actor.role !== UserRole.SUPER_ADMIN) throw new ForbiddenException('Only administrators can invite mentors.');
     const phoneNumber = toWhatsAppNumber(input.phoneNumber);
     if (!phoneNumber) throw new BadRequestException('Enter a valid WhatsApp number, for example 0803 123 4567 or +234 803 123 4567.');
     const requested = [...new Set(input.topicIds ?? [])];
@@ -425,7 +425,7 @@ export class AdminService {
     // before invitations became admin-only still go to an administrator for approval.)
     if (invitation.email && invitation.email.toLowerCase() !== user.email.toLowerCase()) throw new ForbiddenException('Sign in with the email address this invitation was sent to.');
     if (invitation.invitedById === user.id) throw new ForbiddenException('You cannot accept an invitation you sent yourself.');
-    if (invitation.requiresApproval && user.role === UserRole.COUNSELLOR) throw new BadRequestException('Your account is already a counsellor account.');
+    if (invitation.requiresApproval && user.role === UserRole.COUNSELLOR) throw new BadRequestException('Your account is already a mentor account.');
     const topicIds = this.invitationTopicIds(invitation);
     const validTopics = await this.prisma.counsellingTopic.findMany({ where: { id: { in: topicIds }, isActive: true }, select: { id: true } });
 
@@ -434,9 +434,9 @@ export class AdminService {
         const consumed = await tx.counsellorInvitation.updateMany({ where: { id: invitation.id, acceptedAt: null, expiresAt: { gt: new Date() } }, data: { acceptedAt: new Date(), acceptedById: user.id } });
         if (consumed.count !== 1) throw new BadRequestException('This invitation has already been used or expired.');
         const admins = await tx.user.findMany({ where: { role: { in: [UserRole.ADMIN, UserRole.SUPER_ADMIN] }, status: UserStatus.ACTIVE }, select: { id: true } });
-        for (const admin of admins) await createNotification(tx, admin.id, 'Counsellor request to review', `${user.email} accepted a counsellor invitation shared on WhatsApp. Approve or decline it in Admin > Counselling.`, 'COUNSELLOR');
-        await createNotification(tx, invitation.invitedById, 'Invitation accepted', `${user.email} accepted your counsellor invitation. An administrator will review it.`, 'COUNSELLOR');
-        await createNotification(tx, user.id, 'Request sent for approval', 'Thank you. An administrator will review your counsellor request. You will be notified here when it is approved.', 'COUNSELLOR');
+        for (const admin of admins) await createNotification(tx, admin.id, 'Mentor request to review', `${user.email} accepted a mentor invitation shared on WhatsApp. Approve or decline it in Admin > Counselling.`, 'COUNSELLOR');
+        await createNotification(tx, invitation.invitedById, 'Invitation accepted', `${user.email} accepted your mentor invitation. An administrator will review it.`, 'COUNSELLOR');
+        await createNotification(tx, user.id, 'Request sent for approval', 'Thank you. An administrator will review your mentor request. You will be notified here when it is approved.', 'COUNSELLOR');
         await tx.auditLog.create({ data: { actorId: user.id, action: 'COUNSELLOR_INVITATION_ACCEPTED_PENDING', entityType: 'CounsellorInvitation', entityId: invitation.id, metadata: { invitedById: invitation.invitedById } } });
         return { id: user.id, email: user.email, role: user.role, status: 'PENDING_APPROVAL' as const, message: 'Request sent. An administrator will review it, and you will be notified when you are approved.' };
       });
@@ -448,9 +448,9 @@ export class AdminService {
       if (consumed.count !== 1) throw new BadRequestException('This invitation has already been used or expired.');
       const updated = await this.grantCounsellorRole(tx, user.id, topicIds, invitation.invitedById);
       await tx.auditLog.create({ data: { actorId: user.id, action: 'COUNSELLOR_INVITATION_ACCEPTED', entityType: 'User', entityId: user.id, metadata: { invitedById: invitation.invitedById, topicIds } } });
-      await createNotification(tx, user.id, 'Welcome, counsellor', 'Your invitation was accepted. Set your availability to Available when you are ready to receive discussions.', 'COUNSELLOR');
-      await createNotification(tx, invitation.invitedById, 'Counsellor invitation accepted', `${user.email} accepted the counsellor invitation.`, 'COUNSELLOR');
-      return { ...updated, status: 'APPROVED' as const, message: 'You are now a counsellor.' };
+      await createNotification(tx, user.id, 'Welcome, mentor', 'Your invitation was accepted. Set your availability to Available when you are ready to receive discussions.', 'COUNSELLOR');
+      await createNotification(tx, invitation.invitedById, 'Mentor invitation accepted', `${user.email} accepted the mentor invitation.`, 'COUNSELLOR');
+      return { ...updated, status: 'APPROVED' as const, message: 'You are now a mentor.' };
     });
   }
 
@@ -481,18 +481,18 @@ export class AdminService {
 
   async approveCounsellorRequest(actor: AuthenticatedUser, id: string) {
     const request = await this.prisma.counsellorInvitation.findUnique({ where: { id } });
-    if (!request || !request.requiresApproval || !request.acceptedAt || !request.acceptedById || request.approvedAt || request.declinedAt) throw new NotFoundException('This counsellor request was not found or has already been decided.');
+    if (!request || !request.requiresApproval || !request.acceptedAt || !request.acceptedById || request.approvedAt || request.declinedAt) throw new NotFoundException('This mentor request was not found or has already been decided.');
     const applicant = await this.prisma.user.findUnique({ where: { id: request.acceptedById }, select: { id: true, email: true, role: true, status: true } });
-    if (!applicant || applicant.status !== UserStatus.ACTIVE) throw new BadRequestException('This account is not active, so it cannot become a counsellor.');
-    if (applicant.role !== UserRole.MEMBER) throw new BadRequestException('Only member accounts can be approved as counsellors.');
+    if (!applicant || applicant.status !== UserStatus.ACTIVE) throw new BadRequestException('This account is not active, so it cannot become a mentor.');
+    if (applicant.role !== UserRole.MEMBER) throw new BadRequestException('Only member accounts can be approved as mentors.');
     const topics = await this.prisma.counsellingTopic.findMany({ where: { id: { in: this.invitationTopicIds(request) }, isActive: true }, select: { id: true } });
     const topicIds = topics.map((topic) => topic.id);
     return this.prisma.$transaction(async tx => {
       const decided = await tx.counsellorInvitation.updateMany({ where: { id, approvedAt: null, declinedAt: null }, data: { approvedAt: new Date(), approvedById: actor.id } });
-      if (decided.count !== 1) throw new BadRequestException('This counsellor request has already been decided.');
+      if (decided.count !== 1) throw new BadRequestException('This mentor request has already been decided.');
       await this.grantCounsellorRole(tx, applicant.id, topicIds, actor.id);
-      await createNotification(tx, applicant.id, 'You are now a counsellor', 'An administrator approved your counsellor request. Open the app again to see your counsellor workspace, then set yourself to Available when you are ready.', 'COUNSELLOR');
-      await createNotification(tx, request.invitedById, 'Counsellor approved', `${applicant.email}, whom you invited, is now a counsellor.`, 'COUNSELLOR');
+      await createNotification(tx, applicant.id, 'You are now a mentor', 'An administrator approved your mentor request. Open the app again to see your mentor workspace, then set yourself to Available when you are ready.', 'COUNSELLOR');
+      await createNotification(tx, request.invitedById, 'Mentor approved', `${applicant.email}, whom you invited, is now a mentor.`, 'COUNSELLOR');
       await tx.auditLog.create({ data: { actorId: actor.id, action: 'COUNSELLOR_REQUEST_APPROVED', entityType: 'User', entityId: applicant.id, metadata: { invitationId: id, topicIds } } });
       return { success: true, topicsAssigned: topicIds.length };
     });
@@ -500,12 +500,12 @@ export class AdminService {
 
   async declineCounsellorRequest(actor: AuthenticatedUser, id: string) {
     const request = await this.prisma.counsellorInvitation.findUnique({ where: { id } });
-    if (!request || !request.requiresApproval || !request.acceptedAt || request.approvedAt || request.declinedAt) throw new NotFoundException('This counsellor request was not found or has already been decided.');
+    if (!request || !request.requiresApproval || !request.acceptedAt || request.approvedAt || request.declinedAt) throw new NotFoundException('This mentor request was not found or has already been decided.');
     return this.prisma.$transaction(async tx => {
       const decided = await tx.counsellorInvitation.updateMany({ where: { id, approvedAt: null, declinedAt: null }, data: { declinedAt: new Date(), approvedById: actor.id } });
-      if (decided.count !== 1) throw new BadRequestException('This counsellor request has already been decided.');
-      if (request.acceptedById) await createNotification(tx, request.acceptedById, 'Counsellor request not approved', 'An administrator reviewed your counsellor request and did not approve it. Contact the person who invited you if you have questions.', 'COUNSELLOR');
-      await createNotification(tx, request.invitedById, 'Counsellor request declined', 'An administrator declined a counsellor invitation you shared.', 'COUNSELLOR');
+      if (decided.count !== 1) throw new BadRequestException('This mentor request has already been decided.');
+      if (request.acceptedById) await createNotification(tx, request.acceptedById, 'Mentor request not approved', 'An administrator reviewed your mentor request and did not approve it. Contact the person who invited you if you have questions.', 'COUNSELLOR');
+      await createNotification(tx, request.invitedById, 'Mentor request declined', 'An administrator declined a mentor invitation you shared.', 'COUNSELLOR');
       await tx.auditLog.create({ data: { actorId: actor.id, action: 'COUNSELLOR_REQUEST_DECLINED', entityType: 'CounsellorInvitation', entityId: id, metadata: {} } });
       return { success: true };
     });
@@ -540,14 +540,14 @@ export class AdminService {
         if (active < 5) candidates.push({ id: item.id, active, appointmentLoad });
       }
       candidates.sort((a, b) => a.active - b.active || a.appointmentLoad - b.appointmentLoad);
-      if (!candidates[0]) throw new BadRequestException('No available counsellor is assigned to this topic.');
+      if (!candidates[0]) throw new BadRequestException('No available mentor is assigned to this topic.');
       const activeAssignment = await tx.discussionAssignment.findFirst({ where: { discussionId, releasedAt: null } });
       if (activeAssignment) throw new ConflictException('This discussion has already been assigned. Refresh the list.');
       const assignment = await tx.discussionAssignment.create({ data: { discussionId, counsellorId: candidates[0].id, assignedByRule: 'ADMIN_MANUAL_AUTO', } });
       await tx.discussion.update({ where: { id: discussionId }, data: { status: 'ASSIGNED' } });
       const counsellor = await tx.counsellorProfile.findUnique({ where: { id: candidates[0].id }, select: { userId: true } });
       if (counsellor) await tx.userNotification.create({ data: { userId: counsellor.userId, title: 'New counselling discussion', body: `A discussion about ${discussion.topic.name} has been assigned to you.`, type: 'DISCUSSION' } });
-      await tx.userNotification.create({ data: { userId: discussion.creatorId, title: 'Counsellor assigned', body: `A counsellor has been assigned to your ${discussion.topic.name} discussion.`, type: 'DISCUSSION' } });
+      await tx.userNotification.create({ data: { userId: discussion.creatorId, title: 'Mentor assigned', body: `A mentor has been assigned to your ${discussion.topic.name} discussion.`, type: 'DISCUSSION' } });
       await tx.auditLog.create({ data: { actorId: actor.id, action: 'DISCUSSION_AUTO_ASSIGNED', entityType: 'Discussion', entityId: discussionId, metadata: { counsellorId: candidates[0].id } } });
       const activeCount = await tx.discussionAssignment.count({ where: { counsellorId: candidates[0].id, releasedAt: null, discussion: { status: { in: ['ASSIGNED', 'IN_PROGRESS', 'WAITING_FOR_MEMBER'] } } } });
       if (activeCount >= 5) await tx.counsellorProfile.update({ where: { id: candidates[0].id }, data: { availability: CounsellorAvailability.BUSY } });
@@ -585,9 +585,9 @@ export class AdminService {
 
   async assignTopics(actor: AuthenticatedUser, userId: string, topicIds: string[]) {
     const account = await this.prisma.user.findUnique({ where: { id: userId }, select: { role: true } });
-    if (account?.role !== UserRole.COUNSELLOR) throw new BadRequestException('Only counsellor accounts can receive topic assignments.');
+    if (account?.role !== UserRole.COUNSELLOR) throw new BadRequestException('Only mentor accounts can receive topic assignments.');
     const counsellor = await this.prisma.counsellorProfile.findUnique({ where: { userId } });
-    if (!counsellor) throw new NotFoundException('Counsellor profile not found. Promote this account to Counsellor first.');
+    if (!counsellor) throw new NotFoundException('Mentor profile not found. Promote this account to Mentor first.');
     const topics = await this.prisma.counsellingTopic.findMany({ where: { id: { in: [...new Set(topicIds)] }, isActive: true }, select: { id: true } });
     if (topics.length !== new Set(topicIds).size) throw new BadRequestException('One or more selected topics are invalid or inactive.');
     await this.prisma.$transaction(async tx => {
@@ -601,14 +601,14 @@ export class AdminService {
   }
 
   async counsellorAvailability(actor: AuthenticatedUser, userId: string, availability: CounsellorAvailability) {
-    if (actor.role !== 'SUPER_ADMIN' && actor.role !== 'ADMIN' && actor.id !== userId) throw new ForbiddenException('You cannot change this counsellor availability.');
+    if (actor.role !== 'SUPER_ADMIN' && actor.role !== 'ADMIN' && actor.id !== userId) throw new ForbiddenException('You cannot change this mentor availability.');
     const account = await this.prisma.user.findUnique({ where: { id: userId }, select: { role: true } });
-    if (account?.role !== UserRole.COUNSELLOR) throw new BadRequestException('Only counsellor accounts have an availability setting.');
+    if (account?.role !== UserRole.COUNSELLOR) throw new BadRequestException('Only mentor accounts have an availability setting.');
     const profile = await this.prisma.counsellorProfile.findUnique({ where: { userId } });
-    if (!profile) throw new NotFoundException('Counsellor profile not found.');
+    if (!profile) throw new NotFoundException('Mentor profile not found.');
     if (availability === CounsellorAvailability.AVAILABLE) {
       const active = await countActiveDiscussions(this.prisma, profile.id);
-      if (active >= MAX_ACTIVE_DISCUSSIONS) throw new BadRequestException('This counsellor already has five active discussions and cannot be marked available.');
+      if (active >= MAX_ACTIVE_DISCUSSIONS) throw new BadRequestException('This mentor already has five active discussions and cannot be marked available.');
     }
     const updated = await this.prisma.$transaction(async tx => {
       const result = await tx.counsellorProfile.update({ where: { id: profile.id }, data: { availability } });

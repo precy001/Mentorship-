@@ -48,7 +48,7 @@ export class MailService {
       const actionLabel =
         action === 'verify' ? 'Verify email address'
           : action === 'reset' ? 'Reset password'
-            : 'Accept your Mentorship+ counsellor invitation';
+            : 'Accept your Mentorship+ mentor invitation';
 
       const textContent =
         `${actionLabel}: ${actionUrl}\n\n` +

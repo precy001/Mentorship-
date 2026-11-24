@@ -14,9 +14,9 @@ export class DiscussionsService {
 
   async counsellorProfile(userId: string) {
     const user = await this.prisma.user.findUnique({ where: { id: userId }, select: { role: true } });
-    if (user?.role !== UserRole.COUNSELLOR) throw new ForbiddenException('Counsellor access is required.');
+    if (user?.role !== UserRole.COUNSELLOR) throw new ForbiddenException('Mentor access is required.');
     const profile = await this.prisma.counsellorProfile.findUnique({ where: { userId }, include: { topics: { include: { topic: { select: { id: true, name: true } } } } } });
-    if (!profile) throw new NotFoundException('Counsellor profile not found.');
+    if (!profile) throw new NotFoundException('Mentor profile not found.');
     const activeDiscussions = await this.prisma.discussionAssignment.count({ where: { counsellorId: profile.id, releasedAt: null, discussion: { status: { in: [DiscussionStatus.ASSIGNED, DiscussionStatus.IN_PROGRESS, DiscussionStatus.WAITING_FOR_MEMBER] } } } });
     let availability = profile.availability;
     if (activeDiscussions >= 5 && availability === CounsellorAvailability.AVAILABLE) {
@@ -31,9 +31,9 @@ export class DiscussionsService {
 
   async setCounsellorAvailability(userId: string, availability: CounsellorAvailability) {
     const user = await this.prisma.user.findUnique({ where: { id: userId }, select: { role: true } });
-    if (user?.role !== UserRole.COUNSELLOR) throw new ForbiddenException('Counsellor access is required.');
+    if (user?.role !== UserRole.COUNSELLOR) throw new ForbiddenException('Mentor access is required.');
     const profile = await this.prisma.counsellorProfile.findUnique({ where: { userId } });
-    if (!profile) throw new NotFoundException('Counsellor profile not found.');
+    if (!profile) throw new NotFoundException('Mentor profile not found.');
     const active = await this.prisma.discussionAssignment.count({ where: { counsellorId: profile.id, releasedAt: null, discussion: { status: { in: [DiscussionStatus.ASSIGNED, DiscussionStatus.IN_PROGRESS, DiscussionStatus.WAITING_FOR_MEMBER] } } } });
     if (availability === CounsellorAvailability.AVAILABLE && active >= MAX_ACTIVE_DISCUSSIONS) throw new BadRequestException('You have five active discussions and cannot accept another assignment.');
     return this.prisma.$transaction(async tx => {
@@ -78,10 +78,10 @@ export class DiscussionsService {
           const activeAfterAssignment = await tx.discussionAssignment.count({ where: { counsellorId: candidates[0].id, releasedAt: null, discussion: { status: { in: [DiscussionStatus.ASSIGNED, DiscussionStatus.IN_PROGRESS, DiscussionStatus.WAITING_FOR_MEMBER] } } } });
           if (activeAfterAssignment >= 5) await tx.counsellorProfile.update({ where: { id: candidates[0].id }, data: { availability: CounsellorAvailability.BUSY } });
         }
-        await tx.userNotification.create({ data: { userId: user.id, title: 'Counsellor assigned', body: `Your ${topic.name} discussion has been assigned to a counsellor.`, type: 'DISCUSSION' } });
+        await tx.userNotification.create({ data: { userId: user.id, title: 'Mentor assigned', body: `Your ${topic.name} discussion has been assigned to a mentor.`, type: 'DISCUSSION' } });
         return tx.discussion.update({ where: { id: discussion.id }, data: { status: DiscussionStatus.ASSIGNED }, include: { topic: true, assignments: { include: { counsellor: { include: { user: { select: { displayName: true } } } } } }, messages: { orderBy: { createdAt: 'asc' } } } });
       }
-      await tx.userNotification.create({ data: { userId: user.id, title: 'Discussion received', body: `Your ${topic.name} discussion has been received. We will notify you when a counsellor becomes available.`, type: 'DISCUSSION' } });
+      await tx.userNotification.create({ data: { userId: user.id, title: 'Discussion received', body: `Your ${topic.name} discussion has been received. We will notify you when a mentor becomes available.`, type: 'DISCUSSION' } });
       return tx.discussion.findUnique({ where: { id: discussion.id }, include: { topic: true, messages: { orderBy: { createdAt: 'asc' } } } });
     }, { isolationLevel: 'Serializable' });
   }

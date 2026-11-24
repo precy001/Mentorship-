@@ -42,6 +42,17 @@ export function formatTimeRange(start: string, end: string): string {
 }
 
 /** "IN_PROGRESS" -> "In progress" */
+/** Account roles as people see them. The role is still stored as COUNSELLOR; everywhere on screen it is "Mentor". */
+const ROLE_LABELS: Record<string, string> = { MEMBER: "Member", COUNSELLOR: "Mentor", ADMIN: "Admin", SUPER_ADMIN: "Super admin" };
+export function roleLabel(role: string | null | undefined): string {
+  return role ? ROLE_LABELS[role] ?? humanize(role) : "";
+}
+
+/** System names shown to administrators (the audit trail): the counsellor role reads as "mentor" there too. */
+export function mentorWording(value: string): string {
+  return value.replace(/COUNSELLOR/g, "MENTOR").replace(/Counsellor/g, "Mentor").replace(/counsellor/g, "mentor");
+}
+
 export function humanize(value: string | null | undefined): string {
   if (!value) return "";
   const text = value.replace(/_/g, " ").toLowerCase();

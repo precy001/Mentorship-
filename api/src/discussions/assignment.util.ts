@@ -55,7 +55,7 @@ export async function assignWaitingDiscussions(tx: Prisma.TransactionClient, cou
     await tx.discussionAssignment.create({ data: { discussionId: discussion.id, counsellorId, assignedByRule: 'QUEUE_TOPIC_AVAILABILITY' } });
     await tx.discussion.update({ where: { id: discussion.id }, data: { status: DiscussionStatus.ASSIGNED } });
     await createNotification(tx, counsellor.userId, 'New counselling discussion', `A discussion about ${discussion.topic.name} has been assigned to you.`, 'DISCUSSION');
-    await createNotification(tx, discussion.creatorId, 'Counsellor assigned', `A counsellor is now assigned to your ${discussion.topic.name} discussion: ${discussion.title}.`, 'DISCUSSION');
+    await createNotification(tx, discussion.creatorId, 'Mentor assigned', `A mentor is now assigned to your ${discussion.topic.name} discussion: ${discussion.title}.`, 'DISCUSSION');
     await tx.auditLog.create({ data: { actorId: null, action: 'DISCUSSION_QUEUE_ASSIGNED', entityType: 'Discussion', entityId: discussion.id, metadata: { counsellorId } } });
   }
   if (waiting.length) await syncCounsellorWorkload(tx, counsellorId);
